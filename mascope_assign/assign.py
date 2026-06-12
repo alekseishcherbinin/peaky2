@@ -28,6 +28,17 @@ MODULE_VERSIONS = {
 }
 
 
+def _module_hashes() -> dict:
+    """sha1 of each module file -- the manifest must pin the EXACT code of a
+    run; static version strings are not bumped on every edit (v15-vs-v16
+    lesson: two runs differed only via an un-versioned passes.py edit)."""
+    import hashlib
+    from pathlib import Path
+    d = Path(__file__).parent
+    return {p.name: hashlib.sha1(p.read_bytes()).hexdigest()[:12]
+            for p in sorted(d.glob("*.py"))}
+
+
 def run(sample_id: str, context: str = "ambient-air", *,
         cfg: passes.PassConfig | None = None, use_cache: bool = True,
         do_pass2: bool = True, do_pass3: bool = True, do_pass4: bool = True,
@@ -119,7 +130,8 @@ def run(sample_id: str, context: str = "ambient-air", *,
     log(f"[run] stats {json.dumps(st)}")
     return {"ledger": led, "stats": st, "summaries": summaries,
             "prescan": pre.as_dict(), "problems": problems,
-            "module_versions": MODULE_VERSIONS, "context": profile.label,
+            "module_versions": MODULE_VERSIONS,
+            "module_hashes": _module_hashes(), "context": profile.label,
             "sample_id": sample_id}
 
 
