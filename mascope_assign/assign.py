@@ -126,8 +126,7 @@ def run(sample_id: str, context: str = "ambient-air", *,
         # iso-pair enumeration then re-claims them as di-bromide SOA clusters.
         summaries["carbon_clamp_pre4"] = _safe(
             "carbon_clamp_pre4",
-            lambda: {"demoted": passes.demote_carbon_inconsistent(led, cfg, log=log),
-                     "massgate": passes.demote_massgate_monsters(led, cfg, log=log)})
+            lambda: {"demoted": passes.demote_carbon_inconsistent(led, cfg, log=log)})
         summaries["pass4"] = _safe("pass4", lambda: residual.explain_residual(
             client, sample_id, led, profile, pre, cfg, adducts,
             reagent=reagent, log=log))
