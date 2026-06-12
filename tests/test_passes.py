@@ -482,5 +482,76 @@ check("audit: correct assignment untouched (13C attached, nothing cleared)",
       L.role_of(led, "P") == L.ROLE_M0 and s["c13_clamp"] == 0
       and s["c13_missing"] == 0 and s["c13_attached"] == 1, s)
 
+# ---------- audit: twin-satellite fallback for missing 13C ----------
+# v20 false-clear: C3H6O3.Br- at 10.3k cps -- own 13C absent from the peak
+# list, but the 81Br twin's 13C satellite exists and proves the carbon.
+from mascope_assign import chemistry as CH  # noqa: E402
+mz_l = CH.ion_mz("C3H6O3", "[M+Br]-")
+led = mk_ledger([("La", mz_l, 10300.0),
+                 ("Tw", mz_l + 1.9979535, 10000.0),
+                 ("Sat", mz_l + 1.9979535 + 1.0033548, 350.0)])
+commit(led, "La", "C3H6O3", "C3H6BrO3-")
+L.attach_isotopologue(led, "Tw", "La", iso_label="81Br")
+s = P.audit_isotopes(led, ACFG, log=lambda *a: None)
+check("audit: twin 13C satellite blocks the missing-13C clear",
+      L.role_of(led, "La") == L.ROLE_M0 and s["c13_missing"] == 0, s)
+# control: same peak with NO twin satellite still clears
+led = mk_ledger([("Lb", mz_l, 10300.0), ("Tw2", mz_l + 1.9979535, 10000.0)])
+commit(led, "Lb", "C3H6O3", "C3H6BrO3-")
+L.attach_isotopologue(led, "Tw2", "Lb", iso_label="81Br")
+s = P.audit_isotopes(led, ACFG, log=lambda *a: None)
+check("audit: no satellite anywhere still clears",
+      L.role_of(led, "Lb") == L.ROLE_UNEXPLAINED and s["c13_missing"] == 1, s)
+
+# ---------- pass 5: known-neutral completion ----------
+from mascope_assign import contexts as XC  # noqa: E402
+PROF5 = XC.get_context("ambient-air")
+ADD5 = ["[M-H]-", "[M+Br]-"]
+mz_c2 = CH.ion_mz("C2H4O3", "[M+Br]-")
+mz_c5 = CH.ion_mz("C5H10O3", "[M+Br]-")
+mz_c3 = CH.ion_mz("C3H6O3", "[M+Br]-")          # bracketed gap (C2..C5, j=1)
+mz_x_mh = CH.ion_mz("C10H16O3", "[M-H]-")
+mz_x_br = CH.ion_mz("C10H16O3", "[M+Br]-")      # cross-channel partner
+led5 = mk_ledger([("A2", mz_c2, 700.0), ("A5", mz_c5, 1000.0),
+                  ("G3", mz_c3, 10300.0), ("AX", mz_x_mh, 400.0),
+                  ("PX", mz_x_br, 1500.0), ("far", 555.555, 300.0)])
+commit(led5, "A2", "C2H4O3", "C2H4BrO3-", conf="High")
+commit(led5, "A5", "C5H10O3", "C5H10BrO3-", conf="High")
+L.commit_assignment(led5, "AX", neutral_formula="C10H16O3", adduct="[M-H]-",
+                    ion_formula="C10H15O3-", ion_score=0.9, ppm_error=0.1,
+                    pass_no=1, method="t", confidence="Good", commentary="t")
+
+def fake5(client, sample_id, formulas, *, mechanism_ids=None, **kw):
+    rows = []
+    if "C3H6O3" in formulas:
+        rows.append(dict(compound_formula="C3H6O3", compound_score=0.9,
+                         ion_formula="C3H6BrO3-", ion_score=0.9, iso_label="M0",
+                         is_base=True, theo_mz=mz_c3, rel_abundance=1.0,
+                         iso_score=0.9, sample_peak_id="G3", sample_peak_mz=mz_c3,
+                         sample_peak_intensity=10300.0, ppm_error=0.3,
+                         abundance_error=0.0))
+    if "C10H16O3" in formulas:
+        rows.append(dict(compound_formula="C10H16O3", compound_score=0.9,
+                         ion_formula="C10H16BrO3-", ion_score=0.9, iso_label="M0",
+                         is_base=True, theo_mz=mz_x_br, rel_abundance=1.0,
+                         iso_score=0.9, sample_peak_id="PX", sample_peak_mz=mz_x_br,
+                         sample_peak_intensity=1500.0, ppm_error=0.2,
+                         abundance_error=0.0))
+    return pd.DataFrame(rows)
+
+s5 = P.run_pass5_completion(None, "SID", led5, PROF5, ACFG, ADD5,
+                            score_fn=fake5, log=lambda *a: None)
+check("pass5 commits the bracketed series gap (C3H6O3)",
+      led5.loc[led5.peak_id == "G3", "neutral_formula"].iloc[0] == "C3H6O3", s5)
+check("pass5 commits the cross-channel partner (C10H16O3 [M+Br]-)",
+      led5.loc[led5.peak_id == "PX", "neutral_formula"].iloc[0] == "C10H16O3"
+      and led5.loc[led5.peak_id == "PX", "adduct"].iloc[0] == "[M+Br]-", s5)
+check("pass5 commits exactly the two targets", s5["committed"] == 2, s5)
+check("pass5 method recorded", "completion" in
+      led5.loc[led5.peak_id == "G3", "method"].iloc[0])
+check("untargeted peak untouched",
+      L.role_of(led5, "far") == L.ROLE_UNEXPLAINED)
+check("ledger valid after pass5", L.validate(led5) == [], L.validate(led5))
+
 print(f"\n{PASS} passed, {FAIL} failed")
 sys.exit(1 if FAIL else 0)

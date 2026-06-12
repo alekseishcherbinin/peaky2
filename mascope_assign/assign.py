@@ -42,6 +42,7 @@ def _module_hashes() -> dict:
 def run(sample_id: str, context: str = "ambient-air", *,
         cfg: passes.PassConfig | None = None, use_cache: bool = True,
         do_pass2: bool = True, do_pass3: bool = True, do_pass4: bool = True,
+        do_pass5: bool = True,
         log=print, checkpoint_dir=None) -> dict:
     cfg = cfg or passes.PassConfig()
     profile = contexts.get_context(context)
@@ -111,6 +112,11 @@ def run(sample_id: str, context: str = "ambient-air", *,
         summaries["pass4"] = _safe("pass4", lambda: residual.explain_residual(
             client, sample_id, led, profile, pre, cfg, adducts,
             reagent=reagent, log=log))
+    if do_pass5:
+        # known-neutral completion: cross-channel partners + series gaps of
+        # the assignments made by passes 1-4 (no new formula space)
+        summaries["pass5"] = _safe("pass5", lambda: passes.run_pass5_completion(
+            client, sample_id, led, profile, cfg, adducts, log=log))
 
     # post-run audit: apply the calibrated mass gate to pre-calibration commits
     # (pass 1 Lows) and anything that slipped through with no mass evidence

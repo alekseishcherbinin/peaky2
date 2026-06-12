@@ -342,7 +342,10 @@ def commit_winners(ledger: pd.DataFrame, arb: dict, *, pass_no: int, method: str
         win = win.sort_values("eff_score", ascending=False, na_position="last")
     committed, locked_ids = [], []
     rejected = {"nan_ppm": 0, "mass_gate": 0, "minor_channel": 0}
-    series_like = ("series" in method) or ("gka" in method)
+    # series/GKA proposals and known-neutral completions carry structural
+    # evidence by construction (chain membership / an already-assigned neutral)
+    series_like = ("series" in method) or ("gka" in method) \
+        or ("completion" in method)
     for _, w in win.iterrows():
         pid = w["peak_id"]
         if only_peaks is not None and pid not in only_peaks:
@@ -463,6 +466,89 @@ def commit_winners(ledger: pd.DataFrame, arb: dict, *, pass_no: int, method: str
             "rejected": rejected}
 
 
+def run_pass5_completion(client, sample_id: str, ledger: pd.DataFrame, profile,
+                         cfg: PassConfig, adducts: list[str], *,
+                         score_fn=None, log=print) -> dict:
+    """Pass 5 -- known-neutral completion. Opens NO new formula space: it only
+    proposes neutrals the run already believes, onto unexplained peaks that are
+
+      (a) cross-channel partners: another registered adduct of an assigned
+          neutral (e.g. the [M+Br]- of a Good [M-H]- compound, TFA's [M-H]-), or
+      (b) series-gap members: a CH2-bracketed gap inside an assigned homolog
+          ladder (the C2/C5/C6 hydroxy-acid ladder whose missing C3 rung,
+          C3H6O3.Br- at 10.3k cps, was the biggest unexplained peak of v20).
+
+    Mascope still scores every proposal (its ppm/isotope attribution is
+    authoritative) and the normal commit gates apply; 'completion' in the
+    method name grants the pattern-evidence band, since the evidence is an
+    independently assigned neutral."""
+    score_fn = score_fn or IO.score_candidates
+    out = {"committed": 0, "locked": 0, "iso_attached": 0}
+    m0 = ledger[ledger["role"] == L.ROLE_M0].dropna(subset=["neutral_formula"])
+    anchors = m0[m0["confidence"].astype(str).str.startswith(("High", "Good"))]
+    assigned = set(anchors["neutral_formula"])
+    if not assigned:
+        log("[pass5] no High/Good anchors; skipping")
+        return out
+    un = ledger[ledger["role"] == L.ROLE_UNEXPLAINED]
+    gadducts = [a for a in adducts if a in C.ADDUCT_SHIFTS]
+
+    def un_peak_near(target: float):
+        if not len(un):
+            return None
+        d = (un["mz"] - target).abs()
+        i = d.idxmin()
+        return un.at[i, "peak_id"] if d.loc[i] <= target * cfg.search_ppm * 1e-6 else None
+
+    targets: dict[str, set] = {}
+    n_cross = n_gap = 0
+    # (a) cross-channel partners of assigned neutrals
+    for nf in assigned:
+        for ad in gadducts:
+            try:
+                pid = un_peak_near(C.ion_mz(nf, ad))
+            except Exception:
+                continue
+            if pid is not None:
+                targets.setdefault(nf, set()).add(pid)
+                n_cross += 1
+    # (b) CH2-bracketed gaps between assigned ladder anchors
+    for nf in sorted(assigned):
+        for k in (2, 3):
+            if G.formula_add(nf, "CH2", k) not in assigned:
+                continue
+            for j in range(1, k):
+                mid = G.formula_add(nf, "CH2", j)
+                if not mid or mid in assigned or not C.dbe_ok(mid)[0]:
+                    continue
+                for ad in gadducts:
+                    pid = un_peak_near(C.ion_mz(mid, ad))
+                    if pid is not None:
+                        targets.setdefault(mid, set()).add(pid)
+                        n_gap += 1
+    if not targets:
+        log("[pass5] no completion targets")
+        return out
+    only = set().union(*targets.values())
+    log(f"[pass5] {len(targets)} known neutrals -> {len(only)} target peaks "
+        f"({n_cross} cross-channel, {n_gap} series-gap)")
+    scored = score_fn(client, sample_id, sorted(targets),
+                      mechanism_ids=cfg.mechanism_ids)
+    if scored is None or len(scored) == 0:
+        log(f"[pass5] WARNING scoring returned EMPTY for {len(targets)} known "
+            f"neutrals -- server likely degraded; completion skipped")
+        out["scoring_empty"] = True
+        return out
+    arb = arbitrate(scored, cfg)
+    s = commit_winners(ledger, arb, pass_no=5, method="completion:known-neutral",
+                       context=profile.label, cfg=cfg, lock=False,
+                       min_raw_score=cfg.tau_suspect,
+                       confidence_suffix="completion",
+                       claim_unexplained_only=True, only_peaks=only)
+    log(f"[pass5] {s}")
+    return s
+
+
 # isotope constants for the post-run physics audit
 _D13C = 1.0033548          # 13C - 12C
 _DBR = 1.9979535           # 81Br - 79Br
@@ -574,6 +660,17 @@ def audit_isotopes(ledger: pd.DataFrame, cfg: PassConfig, *, log=print) -> dict:
                     pass
         elif expected >= 1.5 * cfg.height_cutoff \
                 and _peak_near(mzs, r["mz"] + _D13C) is None:
+            # twin-satellite fallback: when the peak has a halogen isotope
+            # twin, the twin's OWN 13C satellite (13C+81Br / 13C+37Cl) is
+            # equally valid carbon evidence. v20 falsely cleared C3H6O3.Br-
+            # (10.3k cps): its plain 13C is peak-picker-lost, but the twin's
+            # satellite at +1.998+1.0034 exists and is carbon-consistent.
+            twins = ledger[(ledger["parent_peak_id"] == r["peak_id"])
+                           & ledger["iso_label"].astype(str)
+                           .str.contains("Br|Cl", regex=True)]
+            if any(_peak_near(mzs, float(t["mz"]) + _D13C) is not None
+                   for _, t in twins.iterrows()):
+                continue
             try:
                 L.clear_assignment(
                     ledger, r["peak_id"],

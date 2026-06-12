@@ -39,6 +39,7 @@ def main(argv=None):
     ap.add_argument("--no-pass2", action="store_true")
     ap.add_argument("--no-pass3", action="store_true")
     ap.add_argument("--no-pass4", action="store_true")
+    ap.add_argument("--no-pass5", action="store_true")
     ap.add_argument("--output-dir", default=".")
     args = ap.parse_args(argv)
 
@@ -51,7 +52,7 @@ def main(argv=None):
 
     out = assign.run(args.sample_id, args.context, cfg=cfg,
                      use_cache=not args.no_cache, do_pass2=not args.no_pass2,
-                     do_pass3=not args.no_pass3, do_pass4=not args.no_pass4,
+                     do_pass3=not args.no_pass3, do_pass4=not args.no_pass4, do_pass5=not args.no_pass5,
                      checkpoint_dir=str(od / "checkpoints"))
     led = out["ledger"]
 
