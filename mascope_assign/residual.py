@@ -127,7 +127,10 @@ def find_iso_pairs(ledger: pd.DataFrame, *, ppm_tol: float = 8.0,
         if b2 is not None:
             r2 = b2[1] / hs[i]
             b4 = _best_near(i, D_PAIR_BR + D_PAIR_CL)
-            if b4 is not None and 1.0 <= r2 <= 1.6 \
+            # the M+4 satellite IS the diagnostic (a plain Br1 has none);
+            # M+2 gets a wide band because composite overlap drags it off the
+            # textbook 1.29 (v23: real members at r2=0.94/1.17 were missed)
+            if b4 is not None and 0.8 <= r2 <= 1.6 \
                     and 0.15 <= b4[1] / hs[i] <= 0.50:
                 rows.append({"light_pid": pids[i], "heavy_pid": pids[b2[0]],
                              "light_mz": float(ms[i]), "ratio": float(r2),
