@@ -6,9 +6,9 @@ description: >-
   spectrum, identify compounds, build a target list, or explain unassigned /
   contaminant / homolog peaks for a Mascope sample_id. SDK-native, runs locally
   via the shell MCP; defers all mass + isotope scoring to Mascope's
-  match_compounds; produces a 9-sheet Excel with commentary, close
-  alternatives, per-isotopologue scores, a peak-ownership audit, and an
-  interactive rotating-GKA widget. Triggers: "assign formulas", "peak
+  match_compounds; produces an 11-sheet tiered Excel (Identified / Candidates /
+  below-assignability) with commentary, close alternatives, per-isotopologue
+  scores, a peak-ownership audit, and an interactive rotating-GKA widget. Triggers: "assign formulas", "peak
   assignment", "what's in sample X", "annotate spectrum", "unassigned peaks",
   "Kendrick / GKA", "homologous series", "CIMS", "HOM", "PFAS / contaminants".
 ---
@@ -97,8 +97,8 @@ Pass-3 contaminant families are eligible. Reagent adducts are NOT set by context
 
 | file | contents |
 |---|---|
-| `_ledger.csv` | every peak: role, formula, adduct, scores, ppm, confidence, provenance, commentary, alternatives, isotopologues |
-| `_assignments.xlsx` | Assignments · By class · Unique formulas · Target list · Isotopologues · Peak ownership (all 961 peaks) · Unassigned · Reagent ions · Summary |
+| `_ledger.csv` | every peak: role, formula, adduct, scores (incl. arbitration `eff_score`/`eff_margin`/`tied`), ppm, confidence, **tier + tier_reason + candidate_density**, provenance, commentary, alternatives, isotopologues |
+| `_assignments.xlsx` | Summary · Read me (legend) · **Identified** · **Candidates** (one row per candidate formula) · Unassigned (evidence-characterized) · By class · Unique formulas · Isotopologues · Peak ownership (all peaks) · Target list · Reagent ions — styled: frozen headers, autofilters, number formats, tier/confidence color chips |
 | `_summary.md` | narrative + top assignments + coverage |
 | `_manifest.json` | module versions, prescan, series evidence table, per-pass timing |
 | `_gka.html` | interactive rotating-GKA widget (see below) |
@@ -127,14 +127,15 @@ already open. `run_assignment.py` emits one per run.
 | `reagents.py` | reagent-cluster library + labeler |
 | `passes.py` | arbitration + the 4-pass director |
 | `residual.py` | Pass 4 residual explainer |
+| `tiers.py` | Identified/Candidate tiering (margin, density, lattice/BrCl demotions) |
 | `report.py` | Excel / markdown / sheets |
 | `assign.py` | orchestrator + `PassConfig` + module manifest |
 
 ## Testing & iteration
 
 `for t in chemistry contexts ledger isotopes series_gka io_mascope reagents
-passes residual report series_detect; do python3 tests/test_$t.py; done`
-— 229 offline assertions, no network (io_mascope live smoke gated behind
+passes residual tiers report series_detect; do python3 tests/test_$t.py; done`
+— 347 offline assertions, no network (io_mascope live smoke gated behind
 `MASCOPE_LIVE=1`). Every module has a matching `tests/test_<module>.py`. Add a
 test with each change; keep the suite green. See `README.md` for the dev loop and
 `ROADMAP.md` for the open quality work.

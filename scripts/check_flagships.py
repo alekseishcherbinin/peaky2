@@ -81,20 +81,35 @@ def main() -> int:
         r = rows.iloc[0]
         ppm = abs(r["ppm_error"]) if pd.notna(r["ppm_error"]) else 99.0
         conf = str(r["confidence"])
+        tier = str(r["tier"]) if "tier" in led.columns and pd.notna(r.get("tier")) else None
         if ppm > max_ppm:
             print(f"FAIL  {nf} present but |ppm|={ppm:.2f} > {max_ppm} -- {why}")
             failed += 1
         elif conf.startswith(("Suspect", "Reject")):
             print(f"FAIL  {nf} present but confidence '{conf}' -- {why}")
             failed += 1
+        elif tier is not None and tier != "Identified":
+            # a validated flagship demoted to Candidate is a tiering regression
+            print(f"FAIL  {nf} present but tier '{tier}' -- {why}")
+            failed += 1
         else:
-            print(f"  ok  {nf:10s} {r['adduct']:9s} {conf} ({ppm:.2f} ppm)")
+            print(f"  ok  {nf:10s} {r['adduct']:9s} {conf}"
+                  + (f" [{tier}]" if tier else "") + f" ({ppm:.2f} ppm)")
 
     n_junk = 0
     for _pat, pred, why in JUNK:
         for f in m0["neutral_formula"].dropna():
             if pred(parse(f)):
                 print(f"FAIL  junk class present: {f} -- {why}")
+                n_junk += 1
+    # tier guard: the O>=12 lattice monsters must never sit in Identified
+    # (they are C/H-lattice family members wearing CHO(N) mass fits)
+    if "tier" in led.columns:
+        ident = m0[m0["tier"] == "Identified"]
+        for f in ident["neutral_formula"].dropna():
+            if parse(f).get("O", 0) >= 12:
+                print(f"FAIL  junk class present: {f} tier=Identified -- "
+                      "O>=12 monster must be tier Candidate")
                 n_junk += 1
     failed += n_junk
 

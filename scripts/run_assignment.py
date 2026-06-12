@@ -5,7 +5,8 @@
 
 Produces in --output-dir:
     <ID>_<UTC>_ledger.csv      full per-peak ledger (the source of truth)
-    <ID>_<UTC>_assignments.xlsx 9-sheet workbook (commentary + alternatives)
+    <ID>_<UTC>_assignments.xlsx 11-sheet tiered workbook (Identified /
+                                Candidates / Unassigned + legend, styled)
     <ID>_<UTC>_summary.md       narrative summary
     <ID>_<UTC>_manifest.json    reproducibility manifest (module versions, prescan, series evidence, timing)
     <ID>_<UTC>_gka.html         interactive rotating-GKA widget over the residual
@@ -57,7 +58,8 @@ def main(argv=None):
     led = out["ledger"]
 
     led.to_csv(f"{base}_ledger.csv", index=False)
-    report.write_excel(led, f"{base}_assignments.xlsx", out["context"])
+    report.write_excel(led, f"{base}_assignments.xlsx", out["context"],
+                       sample_id=args.sample_id)
     report.write_markdown(out, f"{base}_summary.md")
     manifest = {k: v for k, v in out.items() if k != "ledger"}
     Path(f"{base}_manifest.json").write_text(json.dumps(manifest, indent=2, default=str))

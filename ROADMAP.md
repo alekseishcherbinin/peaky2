@@ -40,13 +40,18 @@ isotope-physics audit → calibrated mass-gate audit.
    carries halogen counts, carbon brackets, and lattice memberships as
    correlation groups.
 
-2. **Two-tier reporting: Identified / Candidates / Below-assignability.**
-   Stop presenting one formula per peak. Tier rules already de facto exist
-   (uniqueness in calibrated window, isotope consistency, alternatives list).
-   The BrCl family (ClN2O10-type vs I-bearing candidates) and the surviving
-   O15 monsters (C19H12O15, C23H18O15 — they sit ON the unexplained C/H
-   lattice, so they are family members wearing CHO fantasies) belong in
-   Candidates. Includes: candidate-density as the confidence currency.
+2. **DONE (this session): tiered reporting — Identified / Candidates /
+   Below-assignability** (`tiers.py` + report rewrite). Mechanical rules:
+   Low/Suspect, O>=12 lattice monsters, mixed BrCl, eff-score near-ties
+   (rescued by cross-channel/series corroboration), close-alternative density
+   without corroboration. Same-ion decomposition aliases excluded from
+   tie/density counting (adduct-reading policy). Candidate-density is the
+   confidence currency (`candidate_density` column; arbitrate now stores 6
+   alternatives + winner eff_score/eff_margin/tied). The Candidates sheet
+   shows ONE ROW PER CANDIDATE FORMULA. check_flagships now asserts flagship
+   tier == Identified and bans O>=12 in Identified. Excel restyled: Summary +
+   Read-me legend sheets, frozen headers, autofilters, number formats,
+   tier/confidence color chips, per-peak banding on Candidates.
 
 3. **Below-assignability certificates (automate the manual proof).** For each
    bright has-constraints residual peak, run the clamped frame x element

@@ -40,27 +40,62 @@ L.commit_assignment(led, "C", neutral_formula="C7H12O4", adduct="[M-H]-",
                     commentary="Pass 2 series from C8H14O4 -CH2")
 L.mark_reagent(led, "E", "reagent ion: [Br]-")
 
-sheets = R.build_sheets(led, "ambient-air")
-check("has all sheets", {"Assignments", "By class", "Unique formulas", "Target list",
-                         "Isotopologues", "Peak ownership", "Unassigned", "Reagent ions"}
-      <= set(sheets), set(sheets))
-check("assignments has 2 rows", len(sheets["Assignments"]) == 2, len(sheets["Assignments"]))
-check("assignment carries commentary",
-      sheets["Assignments"]["commentary"].str.contains("C10H16O4").any())
+sheets = R.build_sheets(led, "ambient-air", sample_id="TEST")
+check("has all sheets", {"Summary", "Read me", "Identified", "Candidates",
+                         "Unassigned", "By class", "Unique formulas",
+                         "Isotopologues", "Peak ownership", "Target list",
+                         "Reagent ions"} <= set(sheets), set(sheets))
+check("summary is the first sheet", list(sheets)[0] == "Summary", list(sheets))
+ident, cand = sheets["Identified"], sheets["Candidates"]
+check("A and C are both Identified (iso-confirmed / unique)",
+      len(ident) == 2 and not len(cand[cand["rank"] == 1]),
+      (ident.get("neutral_formula"), cand.get("formula")))
+check("identified carries commentary",
+      ident["commentary"].str.contains("C10H16O4").any())
+check("identified carries evidence text",
+      ident["evidence"].str.contains("isotopologue").any(), ident["evidence"].tolist())
 check("alternatives rendered to text",
-      sheets["Assignments"]["alternatives_text"].str.contains("C9H13NO5").any(),
-      sheets["Assignments"]["alternatives_text"].tolist())
+      ident["alternatives_text"].str.contains("C9H13NO5").any(),
+      ident["alternatives_text"].tolist())
 check("isotopologues_text rendered",
-      sheets["Assignments"]["isotopologues_text"].str.contains("13C").any())
+      ident["isotopologues_text"].str.contains("13C").any())
 check("isotopologues sheet has child B",
       "B" in set(sheets["Isotopologues"]["peak_id"]))
+check("isotopologues joined to parent formula",
+      (sheets["Isotopologues"]["parent_formula"] == "C10H16O4").any())
 check("ownership covers all 5 peaks", len(sheets["Peak ownership"]) == 5)
+check("ownership carries tier", "tier" in sheets["Peak ownership"].columns)
 check("unassigned has D", "D" in set(sheets["Unassigned"]["peak_id"]))
-check("compound_class assigned", "C10 monomer" in set(sheets["Assignments"]["compound_class"]))
+check("unassigned evidence interpreted",
+      sheets["Unassigned"]["interpretation"].notna().all())
+check("compound_class assigned", "C10 monomer" in set(ident["compound_class"]))
+
+# a tied Good with no corroboration must land in Candidates, expanded per formula
+L.commit_assignment(led, "D", neutral_formula="C6H10O4", adduct="[M-H]-",
+                    ion_formula="C6H9O4-", ion_score=0.85, compound_score=0.85,
+                    eff_score=0.84, eff_margin=0.02, tied=True,
+                    ppm_error=0.3, pass_no=1, method="cheminfo+grid",
+                    confidence="Good", commentary="Pass 1 near-tie",
+                    alternatives=[{"formula": "C2H6N2O6", "ion_score": 0.84,
+                                   "raw_score": 0.84, "eff_score": 0.82, "ppm": 0.4}])
+sheets2 = R.build_sheets(led, "ambient-air")
+cand2 = sheets2["Candidates"]
+check("tied peak lands in Candidates", (cand2["peak_id"] == "D").any())
+check("candidate expanded one row per formula",
+      len(cand2[cand2["peak_id"] == "D"]) == 2, len(cand2))
+check("rank-1 row is the committed winner",
+      cand2[(cand2["peak_id"] == "D") & (cand2["rank"] == 1)]["formula"].iloc[0] == "C6H10O4")
+check("rank-2 row is the alternative",
+      cand2[(cand2["peak_id"] == "D") & (cand2["rank"] == 2)]["formula"].iloc[0] == "C2H6N2O6")
+check("why_candidate explains the tie",
+      cand2[(cand2["peak_id"] == "D") & (cand2["rank"] == 1)]["why_candidate"]
+      .str.contains("near-tie").all())
 
 # summary stats
-ss = R.summary_stats(led)
-check("summary has n_peaks", (ss["metric"] == "n_peaks").any())
+ss = R.summary_stats(led, context="ambient-air", sample_id="TEST")
+check("summary has peak count", (ss["metric"] == "peaks total").any())
+check("summary has tier rows", (ss["section"] == "Tiers").any())
+check("summary has sample id", (ss["value"] == "TEST").any())
 
 # excel write (needs openpyxl)
 try:
@@ -72,14 +107,18 @@ try:
 except ImportError:
     print("  (openpyxl not installed; skipping excel write)")
 
-# markdown
+# markdown (on a tier-stamped ledger, as assign.run leaves it)
+from mascope_assign import tiers as T  # noqa: E402
+T.apply_tiers(led)
 result = {"ledger": led, "stats": L.stats(led), "sample_id": "TEST",
           "context": "ambient-air", "prescan": {"has_Br": False}, "problems": []}
 mdp = R.write_markdown(result, "/tmp/_report_test.md")
 md = mdp.read_text()
 check("markdown has top assignments", "C10H16O4" in md)
 check("markdown reports signal explained", "Signal explained" in md)
-check("markdown signal explained includes reagent ions", "Signal explained: 95.2%" in md, md)
+# every peak is now explained (D was committed in the Candidates test above)
+check("markdown signal explained includes reagent ions", "Signal explained: 100.0%" in md, md)
+check("markdown reports tiers", "Tiers:" in md, md)
 mdp.unlink(missing_ok=True)
 
 print(f"\n{PASS} passed, {FAIL} failed")
