@@ -34,7 +34,15 @@ __version__ = "0.2.0"
 @dataclass
 class PassConfig:
     ppm: float = 1.0                 # user m/z trust
-    search_ppm: float = 5.0          # tolerance used for enumeration/scoring
+    # Grid-enumeration tolerance. The measured instrument accuracy is
+    # sigma~0.35 ppm (self-calibration), so 5 ppm was ~14 sigma and enumerated
+    # a large candidate cloud the calibrated z-gate then rejected -- pure wasted
+    # scoring (and bigger match_compounds requests that time out on a flaky
+    # server). 3 ppm is still ~8 sigma: safely past local calibration drift,
+    # but ~1.7x fewer candidates. Enumeration only (a formula never gridded
+    # can never be scored); match_compounds keeps its 5 ppm window so it still
+    # attributes real 29Si/81Br satellites, and the z-gate owns ppm rejection.
+    search_ppm: float = 3.0          # grid enumeration tolerance
     height_cutoff: float = 500.0
     limit_per_peak: int = 25
     workers: int = 12
