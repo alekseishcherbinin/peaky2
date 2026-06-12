@@ -97,9 +97,10 @@ def run(sample_id: str, context: str = "ambient-air", *,
         _checkpoint(tag)
         return s
 
-    # Pass 0: known instrument-contaminant series (silanediol/PDMS ladder),
-    # locked before the organic grid can mis-claim their peaks
-    summaries = {"pass0": _safe("pass0", lambda: passes.run_pass0_contaminants(
+    # Pass 0: explicit KNOWN species -- instrument contaminants (silanediol)
+    # AND small atmospheric acids/radicals (HO2/HNO3/HNO2/HNO4) that the
+    # integer-DBE / C>=1 organic grid cannot reach -- locked before pass 1
+    summaries = {"pass0": _safe("pass0", lambda: passes.run_pass0_known(
         client, sample_id, led, profile, cfg, adducts, log=log))}
     summaries["pass1"] = _safe("pass1", lambda: passes.run_pass1(
         client, sample_id, led, profile, pre, cfg, adducts, log=log))

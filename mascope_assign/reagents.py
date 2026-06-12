@@ -31,7 +31,9 @@ _M_E = C.M_E
 # small neutrals that cluster onto the reagent anion (incl. organic acids that
 # commonly form Br_n.acid clusters in Br-CIMS)
 _CLUSTER_NEUTRALS = {
-    "H2O": "H2O", "HNO3": "HNO3", "HBr": "HBr", "HNO2": "HNO2",
+    # HNO3/HNO2 are AMBIENT analytes here (user-confirmed 2026-06-12), assigned
+    # in pass 0, NOT reagent clusters -- removed from this library.
+    "H2O": "H2O", "HBr": "HBr",
     "HCOOH": "CH2O2", "CH3COOH": "C2H4O2", "CO2": "CO2",
     "SO2": "O2S", "H2SO4": "H2O4S",
     "propionic": "C3H6O2", "pyruvic": "C3H4O3", "glyoxal": "C2H2O2",

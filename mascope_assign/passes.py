@@ -485,20 +485,47 @@ def _silanediol_series(n_max: int = 8) -> list[str]:
     return [f"C{2*n}H{6*n+2}O{n+1}Si{n}" for n in range(1, n_max + 1)]
 
 
-def run_pass0_contaminants(client, sample_id: str, ledger: pd.DataFrame,
-                           profile, cfg: PassConfig, adducts: list[str], *,
-                           score_fn=None, log=print) -> dict:
-    """Pass 0 -- label known instrument-contaminant series before the organic
-    passes run. Mascope scores the explicit compositions (its isotope model
-    covers 29Si/30Si + the reagent halogen); commits are LOCKED so pass 1
-    cannot displace them with grid CHO fits."""
+# Pass-0 known-species registry: explicit compositions that the general
+# organic grid CANNOT reach -- either instrument contaminants, or real small
+# molecules excluded by the integer-DBE / C>=1 organic priors. Each is scored
+# by Mascope and LOCKED before pass 1, but still gated on mass + 81Br twin.
+#   family -> (formula -> human label)
+def _known_species() -> dict:
+    atmos = {
+        # small atmospheric acids / radicals detected as Br- adducts -- the
+        # PRIMARY analytes of a Br-CIMS, all invisible to the organic grid:
+        # HO2 is a radical (half-integer DBE); the rest are C0 inorganics.
+        # HNO3/HNO2 confirmed AMBIENT analytes by the user (2026-06-12),
+        # so they were removed from the reagent-cluster library.
+        "HO2":  "hydroperoxyl radical",
+        "HNO3": "nitric acid",
+        "HNO2": "nitrous acid",
+        "HNO4": "peroxynitric acid",
+    }
+    contam = {f: "dimethylsilanediol oligomer (PDMS hydrolysis, inlet/tubing)"
+              for f in _silanediol_series()}
+    return {"atmospheric": atmos, "contaminant:silanediol": contam}
+
+
+def run_pass0_known(client, sample_id: str, ledger: pd.DataFrame,
+                    profile, cfg: PassConfig, adducts: list[str], *,
+                    score_fn=None, log=print) -> dict:
+    """Pass 0 -- assign explicit KNOWN species (contaminant series + small
+    atmospheric acids/radicals) before the organic passes run. Mascope scores
+    the compositions (its isotope model covers 29Si/30Si + the reagent
+    halogen); commits are LOCKED so pass 1 cannot displace them with grid CHO
+    fits. Each still passes the mass gate (|ppm|<=2) and the 81Br-twin
+    consistency check, so a composite collision is refused, not locked."""
     score_fn = score_fn or IO.score_candidates
     out = {"committed": 0, "locked": 0, "iso_attached": 0}
-    formulas = _silanediol_series()
+    registry = _known_species()
+    label_of = {f: (fam, lbl) for fam, d in registry.items()
+                for f, lbl in d.items()}
+    formulas = sorted(label_of)
     scored = score_fn(client, sample_id, formulas,
                       mechanism_ids=cfg.mechanism_ids)
     if scored is None or len(scored) == 0:
-        log("[pass0] WARNING scoring returned EMPTY for the contaminant list")
+        log("[pass0] WARNING scoring returned EMPTY for the known-species list")
         out["scoring_empty"] = True
         return out
     base = scored[scored["is_base"] & scored["sample_peak_id"].notna()
@@ -532,22 +559,24 @@ def run_pass0_contaminants(client, sample_id: str, ledger: pd.DataFrame,
                         f"own-81Br-twin ratio {rt:.2f} inconsistent "
                         f"(composite or wrong claim)")
                     continue
+            fam, lbl = label_of[r["compound_formula"]]
+            tag = "atmospheric" if fam == "atmospheric" else "contaminant"
             fam_kids = kids[kids["compound_formula"] == r["compound_formula"]]
             n_kids = int((fam_kids["sample_peak_id"] != pid).sum())
-            conf = ("Good (contaminant)" if float(r["ion_score"]) >= 0.7
-                    or n_kids >= 2 else "Low (contaminant)")
+            conf = (f"Good ({tag})" if float(r["ion_score"]) >= 0.7
+                    or n_kids >= 2 else f"Low ({tag})")
             L.commit_assignment(
                 ledger, pid, neutral_formula=r["compound_formula"],
                 adduct=_mech_to_adduct(r), ion_formula=r["ion_formula"],
                 ion_score=float(r["ion_score"]),
                 compound_score=_f(r.get("compound_score")),
                 ppm_error=float(ppm), pass_no=0,
-                method="contaminant:silanediol", confidence=conf,
-                commentary=(f"Pass 0 (known contaminant): dimethylsilanediol "
-                            f"oligomer {r['compound_formula']} "
-                            f"{_mech_to_adduct(r)}, ppm {float(ppm):.2f}; "
-                            f"PDMS hydrolysis series (inlet/tubing), "
-                            f"GKA-discovered 2026-06-12"))
+                method=f"known:{fam}", confidence=conf,
+                commentary=(f"Pass 0 (known {tag}): {r['compound_formula']} "
+                            f"{_mech_to_adduct(r)} = {lbl}, ppm "
+                            f"{float(ppm):.2f}, ion score {float(r['ion_score']):.2f}"
+                            + ("; excluded from the organic grid (radical / C0 "
+                               "inorganic)" if fam == "atmospheric" else "")))
             out["committed"] += 1
             L.lock_peaks(ledger, [pid])
             out["locked"] += 1

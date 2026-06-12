@@ -593,7 +593,7 @@ def fake0(client, sample_id, formulas, *, mechanism_ids=None, **kw):
                          abundance_error=0.02))
     return pd.DataFrame(rows)
 
-s0 = P.run_pass0_contaminants(None, "SID", led0, PROF5, ACFG, ADD5,
+s0 = P.run_pass0_known(None, "SID", led0, PROF5, ACFG, ADD5,
                               score_fn=fake0, log=lambda *a: None)
 check("pass0 commits the silanediol oligomer",
       led0.loc[led0.peak_id == "D2", "neutral_formula"].iloc[0] == "C4H14O3Si2"
@@ -626,7 +626,7 @@ def fake_n1(client, sample_id, formulas, *, mechanism_ids=None, **kw):
         sample_peak_id="X1", sample_peak_mz=mz_n1,
         sample_peak_intensity=11950.0, ppm_error=1.0, abundance_error=0.0)])
 
-sg = P.run_pass0_contaminants(None, "SID", ledg, PROF5, ACFG, ADD5,
+sg = P.run_pass0_known(None, "SID", ledg, PROF5, ACFG, ADD5,
                               score_fn=fake_n1, log=lambda *a: None)
 check("pass0 refuses claim with inconsistent own twin (ratio 0.04)",
       sg["committed"] == 0 and L.role_of(ledg, "X1") == L.ROLE_UNEXPLAINED, sg)

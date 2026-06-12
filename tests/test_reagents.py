@@ -32,8 +32,10 @@ check("Br- present ~78.9189", bool(near(lib, 78.9189)), near(lib, 78.9189))
 check("[Br3]- present ~236.7555", bool(near(lib, 236.7555)), near(lib, 236.7555))
 # isotopologue 79Br2 81Br at ~238.7535
 check("[Br3]- 79,79,81 isotopologue ~238.7535", bool(near(lib, 238.7535)), near(lib, 238.7535))
-# Br . HNO3 cluster ~ 78.9189 + 62.9956 = 141.914
-check("[Br+HNO3]- present ~141.914", bool(near(lib, 141.914)), near(lib, 141.914))
+# Br . H2O cluster ~ 78.9189 + 18.0106 = 96.929 (HNO3/HNO2 were removed from
+# the cluster library 2026-06-12 -- they are ambient analytes assigned in pass 0)
+check("[Br+H2O]- present ~96.929", bool(near(lib, 96.929)), near(lib, 96.929))
+check("HNO3 NOT in reagent library (now an analyte)", not near(lib, 141.914))
 
 # --- reagent_for_adducts ---
 check("Br reagent from [M+Br]-", RG.reagent_for_adducts(["[M-H]-", "[M+Br]-"]) == "Br")

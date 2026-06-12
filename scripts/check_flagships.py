@@ -40,6 +40,12 @@ FLAGSHIPS = [
     ("C6H20O4Si3", "[M+Br]-", 1.5, "silanediol oligomer n=3 (was bogus C7H16O7Si, z=3.0)"),
     ("C8H26O5Si4", "[M+Br]-", 1.5, "silanediol oligomer n=4: the 20k cps ex-#1 unknown"),
     ("C10H32O6Si5","[M+Br]-", 1.5, "silanediol oligomer n=5"),
+    # small atmospheric acids/radicals as Br- adducts (user-flagged 2026-06-12;
+    # excluded by integer-DBE/C0 organic priors -> pass-0 known-species list)
+    ("HO2",  "[M+Br]-", 1.5, "hydroperoxyl radical, 7.1k cps (half-integer DBE)"),
+    ("HNO3", "[M+Br]-", 1.5, "nitric acid, 5.2k cps (was mislabeled reagent)"),
+    ("HNO2", "[M+Br]-", 1.5, "nitrous acid, 3.8k cps (was mislabeled reagent)"),
+    ("HNO4", "[M+Br]-", 1.5, "peroxynitric acid, 0.24k cps"),
 ]
 
 # junk classes that must NEVER reappear (formula regexes on M0 neutrals)
