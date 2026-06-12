@@ -102,19 +102,42 @@ def find_iso_pairs(ledger: pd.DataFrame, *, ppm_tol: float = 8.0,
     hs = un["height"].to_numpy()[order]
     pids = un["peak_id"].to_numpy()[order]
     claimed_heavy: set = set()
+
+    def _best_near(i, delta):
+        target = ms[i] + delta
+        tol = target * ppm_tol * 1e-6
+        j = bisect.bisect_left(ms, target - tol)
+        best = None
+        while j < len(ms) and ms[j] <= target + tol:
+            if pids[j] not in claimed_heavy and j != i:
+                if best is None or hs[j] > best[1]:
+                    best = (j, hs[j])
+            j += 1
+        return best
+
     for i in range(len(ms)):
         if hs[i] <= 0:
             continue
+        # mixed BrCl FIRST: its M+2 ratio (~1.29 = 0.973 + 0.320) falls inside
+        # the single-Br acceptance band, so without this check a BrCl compound
+        # is read as Br1 and the constrained enumeration fits NOTHING (the v22
+        # CH2O-ladder dead end). Classification requires the diagnostic M+4
+        # satellite (81Br37Cl, ~0.31 of M0) -- a plain Br1 has no M+4.
+        b2 = _best_near(i, D_PAIR_BR)
+        if b2 is not None:
+            r2 = b2[1] / hs[i]
+            b4 = _best_near(i, D_PAIR_BR + D_PAIR_CL)
+            if b4 is not None and 1.0 <= r2 <= 1.6 \
+                    and 0.15 <= b4[1] / hs[i] <= 0.50:
+                rows.append({"light_pid": pids[i], "heavy_pid": pids[b2[0]],
+                             "light_mz": float(ms[i]), "ratio": float(r2),
+                             "element": "BrCl", "n_halogen": 1,
+                             "m4_pid": pids[b4[0]]})
+                claimed_heavy.add(pids[b2[0]])
+                claimed_heavy.add(pids[b4[0]])
+                continue
         for delta, element in ((D_PAIR_BR, "Br"), (D_PAIR_CL, "Cl")):
-            target = ms[i] + delta
-            tol = target * ppm_tol * 1e-6
-            j = bisect.bisect_left(ms, target - tol)
-            best = None
-            while j < len(ms) and ms[j] <= target + tol:
-                if pids[j] not in claimed_heavy and j != i:
-                    if best is None or hs[j] > best[1]:
-                        best = (j, hs[j])
-                j += 1
+            best = _best_near(i, delta)
             if best is None:
                 continue
             ratio = best[1] / hs[i]
@@ -132,7 +155,8 @@ def find_iso_pairs(ledger: pd.DataFrame, *, ppm_tol: float = 8.0,
             if n_hal:
                 rows.append({"light_pid": pids[i], "heavy_pid": pids[best[0]],
                              "light_mz": float(ms[i]), "ratio": float(ratio),
-                             "element": element, "n_halogen": n_hal})
+                             "element": element, "n_halogen": n_hal,
+                             "m4_pid": None})
                 claimed_heavy.add(pids[best[0]])
                 break   # one element interpretation per light peak
     return pd.DataFrame(rows)
@@ -151,16 +175,28 @@ def candidates_for_pair(light_mz: float, element: str, n_halogen: int,
                         adducts: list[str], *, ranges: dict,
                         ppm: float) -> set[str]:
     """Grid candidates for a pair's light member: the ion must contain exactly
-    n_halogen atoms of `element`. DBE-only filtering (grid-structural)."""
+    n_halogen atoms of `element` ('BrCl' = exactly one Br AND one Cl in the
+    ion). DBE-only filtering (grid-structural)."""
     out: set[str] = set()
     for adduct in adducts:
         if adduct not in C.ADDUCT_SHIFTS:
+            continue
+        r = dict(ranges)
+        if element == "BrCl":
+            need_br = 1 - (1 if "Br" in adduct else 0)
+            r["Br"] = (need_br, need_br)
+            r["Cl"] = (1, 1)
+            for f in C.candidates_for_peaks([light_mz], r, [adduct],
+                                            ppm_tolerance=ppm):
+                cnt = C.parse_formula(f)
+                if cnt.get("Br", 0) == need_br and cnt.get("Cl", 0) == 1 \
+                        and not (cnt.get("F", 0) >= 1 and cnt.get("O", 0) > 6):
+                    out.add(f)
             continue
         # halogen needed in the NEUTRAL given this adduct
         need = n_halogen - (1 if element in adduct else 0)
         if need < 0:
             continue
-        r = dict(ranges)
         r[element] = (need, need)
         for f in C.candidates_for_peaks([light_mz], r, [adduct], ppm_tolerance=ppm):
             cnt = C.parse_formula(f)
@@ -331,10 +367,18 @@ def stage_a_iso_pairs(client, sample_id: str, ledger: pd.DataFrame, profile,
                         continue
             if not attached:
                 try:
-                    L.attach_isotopologue(
-                        ledger, p["heavy_pid"], pid,
-                        iso_label=("81Br" if p["element"] == "Br" else "37Cl")
-                        + "(pair)")
+                    lab = {"Br": "81Br", "Cl": "37Cl",
+                           "BrCl": "81Br/37Cl"}[p["element"]]
+                    L.attach_isotopologue(ledger, p["heavy_pid"], pid,
+                                          iso_label=lab + "(pair)")
+                    out["iso_attached"] += 1
+                except L.LedgerError:
+                    pass
+            # mixed-halogen pairs also own their M+4 satellite (81Br37Cl)
+            if p.get("m4_pid") is not None:
+                try:
+                    L.attach_isotopologue(ledger, p["m4_pid"], pid,
+                                          iso_label="81Br37Cl(pair)")
                     out["iso_attached"] += 1
                 except L.LedgerError:
                     pass

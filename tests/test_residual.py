@@ -194,5 +194,36 @@ check("pair enumeration drops F-with-O>6 candidates",
       [f for f in jc if C.parse_formula(f).get("F", 0) >= 1
        and C.parse_formula(f).get("O", 0) > 6])
 
+# ---------- CH2O unit registered for series detection ----------
+from mascope_assign import series_detect as SD  # noqa: E402
+check("CH2O in series unit library", "CH2O" in SD.UNIT_LIBRARY,
+      sorted(SD.UNIT_LIBRARY))
+
+# ---------- mixed BrCl pair classification (M+4-gated) ----------
+# BrCl pattern: M+2/M ~ 1.29 (inside the Br1 band!), M+4/M ~ 0.31
+pk_brcl = pd.DataFrame({
+    "peak_id": ["L", "M2", "M4"],
+    "mz": [400.0, 400.0 + RD.D_PAIR_BR, 400.0 + RD.D_PAIR_BR + RD.D_PAIR_CL],
+    "height": [1e4, 1.29e4, 0.31e4]})
+pr = RD.find_iso_pairs(L.new_ledger(pk_brcl), min_height=100)
+check("BrCl pair classified via M+4 satellite",
+      len(pr) == 1 and pr.iloc[0]["element"] == "BrCl"
+      and pr.iloc[0]["m4_pid"] == "M4", pr.to_dict("records"))
+# control: same M+2 ratio with NO M+4 -> read as plain Br1
+pr2 = RD.find_iso_pairs(L.new_ledger(pk_brcl.iloc[:2]), min_height=100)
+check("same ratio without M+4 stays Br1",
+      len(pr2) == 1 and pr2.iloc[0]["element"] == "Br"
+      and pr2.iloc[0]["n_halogen"] == 1, pr2.to_dict("records"))
+
+# ---------- BrCl constrained enumeration ----------
+mz_brcl = C.ion_mz("C15H17ClN2O10", "[M+Br]-")
+bc = RD.candidates_for_pair(mz_brcl, "BrCl", 1, ["[M+Br]-", "[M-H]-"],
+                            ranges={"C": (1, 20), "H": (0, 44), "O": (0, 14),
+                                    "N": (0, 2), "S": (0, 0)}, ppm=3.0)
+check("BrCl enumeration recovers the Cl neutral via [M+Br]-",
+      "C15H17ClN2O10" in bc, sorted(bc)[:5])
+check("every BrCl candidate carries exactly the pinned halogens",
+      all((C.parse_formula(f).get("Cl", 0) == 1) for f in bc), sorted(bc)[:5])
+
 print(f"\n{PASS} passed, {FAIL} failed")
 sys.exit(1 if FAIL else 0)

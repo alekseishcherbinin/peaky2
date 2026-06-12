@@ -27,6 +27,9 @@ __version__ = "0.1.0"
 # unit -> (exact mass, pipeline action when significant)
 UNIT_LIBRARY: dict[str, tuple[float, str | None]] = {
     "CH2":     (14.015650, None),          # generic homology (pass-4 series)
+    "CH2O":    (30.010565, None),          # carbohydrate / HCHO-oligomer unit
+                                           # (found manually via GKA rotation,
+                                           # v22: Br/Cl-paired ladder 340-720)
     "O":       (15.994915, None),
     "H2O":     (18.010565, None),
     "CO2":     (43.989830, None),
