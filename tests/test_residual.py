@@ -169,5 +169,20 @@ check("characterize: isolated bright peak -> isolated",
 check("characterize: light member records n_Br=1",
       int(ch.loc[ch.peak_id == "L", "n_Br"].iloc[0]) == 1)
 
+# ---------- TFA regression: F earned by chain evidence reaches pair enumeration ----------
+# TFA.Br- at 192.9116 with its 0.978-ratio 81Br twin was invisible v13-v18:
+# not a chain member (no CF2 tail peak) and no F in the pass-4 grid.
+franges = {"C": (1, 40), "H": (0, 84), "O": (0, 30), "N": (0, 3),
+           "S": (0, 1), "F": (0, 17)}
+fc = RD.candidates_for_pair(192.91161, "Br", 1, ["[M+Br]-", "[M-H]-"],
+                            ranges=franges, ppm=4.0)
+check("TFA enumerable for its Br pair once F is enabled", "C2HF3O2" in fc, fc)
+check("TFA pair candidate set stays tiny (density bounded)", len(fc) <= 4, fc)
+fc_nof = RD.candidates_for_pair(192.91161, "Br", 1, ["[M+Br]-", "[M-H]-"],
+                                ranges={k: v for k, v in franges.items()
+                                        if k != "F"}, ppm=4.0)
+check("without F the pair has no candidates (the v13-v18 hole)",
+      len(fc_nof) == 0, fc_nof)
+
 print(f"\n{PASS} passed, {FAIL} failed")
 sys.exit(1 if FAIL else 0)

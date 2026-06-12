@@ -216,6 +216,23 @@ def stage_a_iso_pairs(client, sample_id: str, ledger: pd.DataFrame, profile,
     cmax = min(cmax, 40)
     base_ranges = {"C": (1, cmax), "H": (0, 2 * cmax + 4), "O": (0, 30),
                    "N": (0, profile.max_N), "S": (0, min(1, profile.max_S))}
+    # F is earned by SAMPLE evidence, never default: when the residual carries
+    # significant CF2/C2F4 chains (decoy-validated), pair enumeration may use
+    # F. The Br/Cl doublet pins the halogen count and the z-gate + arbitration
+    # margins bound the density risk. Without this, a chain HEAD with no tail
+    # peak is invisible to both pass 3 (not a chain member) and pass 4 (no F
+    # in the grid) -- which is how TFA.Br- at 192.9116 (-0.8 ppm, textbook
+    # 0.978 doublet) sat unexplained from v13 through v18.
+    try:
+        from . import series_detect as SD
+        ev = SD.detect_series(ledger, ppm=5.0)
+        if len(ev) and bool(((ev["significant"])
+                             & (ev["action"] == "fluorinated")).any()):
+            base_ranges["F"] = (0, 17)
+            log("[pass4.A] F enabled in pair enumeration "
+                "(decoy-validated CF2/C2F4 chain evidence)")
+    except Exception:
+        pass
     # enumerate per pair, pooled scoring. CARBON CLAMP: when the light peak has
     # a measured 13C satellite, restrict C to the measured count -- this both
     # shrinks the grid ~5x and turns "closest fit" into "consistent with the
