@@ -78,6 +78,32 @@ else:
 import pandas as pd  # noqa: E402
 check("flatten([]) -> empty df", len(IO.flatten_match_tree([])) == 0)
 
+
+# ---------- score_candidates failure policy ----------
+class _Matching:
+    def match_compounds(self, sample_id, formulas, match_params, ionization_mechanism_ids):
+        if "BAD" in formulas:
+            raise RuntimeError("boom")
+        return []
+
+
+class _Client:
+    matching = _Matching()
+
+
+try:
+    IO.score_candidates(_Client(), "SID", ["A", "BAD"], batch=1, workers=1)
+    raised = False
+except RuntimeError as e:
+    raised = "match_compounds failed" in str(e) and "BAD" in str(e)
+check("score_candidates raises on partial batch failure by default", raised)
+
+partial = IO.score_candidates(_Client(), "SID", ["A", "BAD"], batch=1,
+                              workers=1, allow_partial=True)
+check("score_candidates allow_partial records failures",
+      len(partial.attrs.get("match_batch_failures", [])) == 1,
+      partial.attrs)
+
 # ---------- live smoke (opt-in) ----------
 if os.environ.get("MASCOPE_LIVE") == "1":
     print("\n-- live smoke --")

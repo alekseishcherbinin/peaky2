@@ -155,7 +155,7 @@ def write_markdown(result: dict, path: str | Path) -> Path:
          f"({st['by_role']['unexplained']}/{st['n_peaks']} unexplained)  |  "
          if "count_frac_by_role" in st else "- ")
         + f"Signal explained: "
-        f"{100*(st['signal_by_role']['M0']+st['signal_by_role']['iso_child']):.1f}%",
+        f"{100*(st['signal_by_role']['M0']+st['signal_by_role']['iso_child']+st['signal_by_role']['reagent']):.1f}%",
         f"- Confidence: {st.get('by_confidence', {})}",
         f"- Prescan: {result['prescan']}",
         "",

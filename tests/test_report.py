@@ -22,9 +22,9 @@ def check(name, cond, detail=""):
 
 
 # build a small finished ledger
-peaks = pd.DataFrame({"peak_id": ["A", "B", "C", "D"],
-                      "mz": [200.1, 201.1, 191.0, 999.0],
-                      "height": [1e5, 1e4, 8e4, 50.0]})
+peaks = pd.DataFrame({"peak_id": ["A", "B", "C", "D", "E"],
+                      "mz": [200.1, 201.1, 191.0, 999.0, 78.9189],
+                      "height": [1e5, 1e4, 8e4, 1e4, 1e4]})
 led = L.new_ledger(peaks)
 L.commit_assignment(led, "A", neutral_formula="C10H16O4", adduct="[M-H]-",
                     ion_formula="C10H15O4-", ion_score=0.97, compound_score=0.96,
@@ -38,6 +38,7 @@ L.commit_assignment(led, "C", neutral_formula="C7H12O4", adduct="[M-H]-",
                     ion_formula="C7H11O4-", ion_score=0.83, compound_score=0.83,
                     ppm_error=0.5, pass_no=2, method="gka-series", confidence="Good (series)",
                     commentary="Pass 2 series from C8H14O4 -CH2")
+L.mark_reagent(led, "E", "reagent ion: [Br]-")
 
 sheets = R.build_sheets(led, "ambient-air")
 check("has all sheets", {"Assignments", "By class", "Unique formulas", "Target list",
@@ -53,7 +54,7 @@ check("isotopologues_text rendered",
       sheets["Assignments"]["isotopologues_text"].str.contains("13C").any())
 check("isotopologues sheet has child B",
       "B" in set(sheets["Isotopologues"]["peak_id"]))
-check("ownership covers all 4 peaks", len(sheets["Peak ownership"]) == 4)
+check("ownership covers all 5 peaks", len(sheets["Peak ownership"]) == 5)
 check("unassigned has D", "D" in set(sheets["Unassigned"]["peak_id"]))
 check("compound_class assigned", "C10 monomer" in set(sheets["Assignments"]["compound_class"]))
 
@@ -78,6 +79,7 @@ mdp = R.write_markdown(result, "/tmp/_report_test.md")
 md = mdp.read_text()
 check("markdown has top assignments", "C10H16O4" in md)
 check("markdown reports signal explained", "Signal explained" in md)
+check("markdown signal explained includes reagent ions", "Signal explained: 95.2%" in md, md)
 mdp.unlink(missing_ok=True)
 
 print(f"\n{PASS} passed, {FAIL} failed")

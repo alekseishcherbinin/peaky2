@@ -57,6 +57,12 @@ check("random background: nothing significant", not ev2.significant.any(),
 fams = SD.families_from_evidence(ev)
 check("CF2 evidence opens 'fluorinated'", "fluorinated" in fams, fams)
 check("no spurious families", set(fams) <= {"fluorinated"}, fams)
+nan_ev = pd.DataFrame([{"significant": True, "action": np.nan},
+                       {"significant": True, "action": None},
+                       {"significant": True, "action": "fluorinated"}])
+check("NaN/None actions do not open fake families",
+      SD.families_from_evidence(nan_ev) == ["fluorinated"],
+      SD.families_from_evidence(nan_ev))
 
 # low-confidence M0 peaks are included in the scanned population
 led3 = ledger_with(ladder)

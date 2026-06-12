@@ -1291,7 +1291,8 @@ def run_pass3(client, sample_id: str, ledger: pd.DataFrame, profile, pre,
         for r in evidence.itertuples()))
     fam_members: dict[str, set] = {}
     for r in evidence.itertuples():
-        if r.significant and r.action:
+        action = r.action
+        if r.significant and isinstance(action, str) and action:
             fam_members.setdefault(r.action, set()).update(
                 SD.unit_members(ledger, r.mass, ppm=cfg.search_ppm,
                                 min_height=cfg.height_cutoff))
@@ -1385,4 +1386,3 @@ def run_pass3(client, sample_id: str, ledger: pd.DataFrame, profile, pre,
     log(f"[pass3] total {total}")
     total["series_evidence"] = evidence.to_dict("records")
     return total
-

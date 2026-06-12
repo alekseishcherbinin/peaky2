@@ -182,6 +182,7 @@ def families_from_evidence(evidence: pd.DataFrame) -> list[str]:
     """Contaminant families to open based on significant units."""
     out: list[str] = []
     for _, r in evidence.iterrows():
-        if r["significant"] and r["action"] and r["action"] not in out:
-            out.append(r["action"])
+        action = r["action"]
+        if r["significant"] and isinstance(action, str) and action and action not in out:
+            out.append(action)
     return out

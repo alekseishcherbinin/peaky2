@@ -24,7 +24,7 @@ FLAGSHIPS = [
     ("C6H12O3",  "[M+Br]-", 1.5, "hydroxy-acid ladder C6 rung"),
     ("C10H16O5", "[M+Br]-", 1.5, "monoterpene ladder rung; 81Br twin at 297.016"),
     ("C10H16O4", None,      1.5, "monoterpene ladder rung, both channels"),
-    ("C10H16O6", None,      1.5, "monoterpene ladder rung"),
+    ("C10H16O6", "[M-H]-",  1.5, "monoterpene ladder rung, deprotonated channel"),
     # cross-channel partners that the missing-13C audit falsely cleared in
     # v18-v21 (absent satellite = picker loss; agreeing second channel wins)
     ("C10H16O6", "[M+Br]-", 1.5, "Br partner of Good [M-H]-, 2.4k cps"),

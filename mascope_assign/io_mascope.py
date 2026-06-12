@@ -236,13 +236,19 @@ def score_candidates(client, sample_id: str, formulas: list[str], *,
                      match_params: dict | None = None,
                      mechanism_ids: list[str] | None = None,
                      batch: int = MATCH_BATCH,
-                     workers: int = MATCH_WORKERS) -> pd.DataFrame:
+                     workers: int = MATCH_WORKERS,
+                     allow_partial: bool = False) -> pd.DataFrame:
     """Score candidate NEUTRAL formulas against the sample. Returns the flat
     per-isotopologue table (see flatten_match_tree). Batches are scored
     CONCURRENTLY -- match_compounds is network-bound, so the wall-clock for a
     many-batch pass (e.g. a wide heteroatom family) scales with the worker
-    count, not the batch count. Per-batch failures degrade to empty, never
-    losing the other batches."""
+    count, not the batch count.
+
+    By default, any failed batch raises. A partial candidate universe is worse
+    than a failed pass: it can make the ledger look clean while alternatives
+    were never scored. Set allow_partial=True only for exploratory tooling; the
+    returned frame then carries failure details in ``frame.attrs``.
+    """
     formulas = sorted({f for f in formulas if f})
     if not formulas:
         return pd.DataFrame()
@@ -257,13 +263,34 @@ def score_candidates(client, sample_id: str, formulas: list[str], *,
             tree = client.matching.match_compounds(
                 sample_id=sample_id, formulas=chunk, match_params=mp,
                 ionization_mechanism_ids=mechanism_ids)
-        except Exception:
-            tree = None
-        return flatten_match_tree(tree or [])
+        except Exception as e:
+            return pd.DataFrame(), {
+                "n_formulas": len(chunk),
+                "first_formula": chunk[0] if chunk else None,
+                "last_formula": chunk[-1] if chunk else None,
+                "error_type": type(e).__name__,
+                "error": str(e),
+            }
+        return flatten_match_tree(tree or []), None
 
     if len(chunks) == 1:
-        frames = [_score(chunks[0])]
+        results = [_score(chunks[0])]
     else:
         with ThreadPoolExecutor(max_workers=min(workers, len(chunks))) as ex:
-            frames = list(ex.map(_score, chunks))
-    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+            results = list(ex.map(_score, chunks))
+    frames = [r[0] for r in results]
+    failures = [r[1] for r in results if r[1] is not None]
+    if failures and not allow_partial:
+        first = failures[0]
+        raise RuntimeError(
+            "match_compounds failed for "
+            f"{len(failures)}/{len(chunks)} batches "
+            f"({sum(f['n_formulas'] for f in failures)} formulas); "
+            f"first failed chunk {first['first_formula']}..{first['last_formula']}: "
+            f"{first['error_type']}: {first['error']}"
+        )
+    out = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    out.attrs["match_batches"] = len(chunks)
+    out.attrs["match_batch_failures"] = failures
+    out.attrs["match_formulas"] = len(formulas)
+    return out
