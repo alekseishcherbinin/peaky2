@@ -163,8 +163,16 @@ def candidates_for_pair(light_mz: float, element: str, n_halogen: int,
         r = dict(ranges)
         r[element] = (need, need)
         for f in C.candidates_for_peaks([light_mz], r, [adduct], ppm_tolerance=ppm):
-            if C.parse_formula(f).get(element, 0) == need:
-                out.add(f)
+            cnt = C.parse_formula(f)
+            if cnt.get(element, 0) != need:
+                continue
+            # fluorochemical oxygen cap (same rule as the pass-3 family): a
+            # fluorinated candidate with O>6 is mass-fit junk -- v19 showed the
+            # F-enabled pair grid producing C9H13ClF2O16-class monsters that
+            # DBE-only filtering cannot stop.
+            if cnt.get("F", 0) >= 1 and cnt.get("O", 0) > 6:
+                continue
+            out.add(f)
     return out
 
 

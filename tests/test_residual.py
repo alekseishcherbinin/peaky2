@@ -184,5 +184,15 @@ fc_nof = RD.candidates_for_pair(192.91161, "Br", 1, ["[M+Br]-", "[M-H]-"],
 check("without F the pair has no candidates (the v13-v18 hole)",
       len(fc_nof) == 0, fc_nof)
 
+# F+O cap in pair enumeration: the v19 junk class (Cl/F + O16) must not enumerate
+jranges = {"C": (1, 40), "H": (0, 84), "O": (0, 30), "N": (0, 3),
+           "S": (0, 1), "F": (0, 17), "Cl": (0, 2)}
+jc = RD.candidates_for_pair(448.97890, "Cl", 1, ["[M-H]-"], ranges=jranges, ppm=4.0)
+check("pair enumeration drops F-with-O>6 candidates",
+      all(not (C.parse_formula(f).get("F", 0) >= 1
+               and C.parse_formula(f).get("O", 0) > 6) for f in jc),
+      [f for f in jc if C.parse_formula(f).get("F", 0) >= 1
+       and C.parse_formula(f).get("O", 0) > 6])
+
 print(f"\n{PASS} passed, {FAIL} failed")
 sys.exit(1 if FAIL else 0)
