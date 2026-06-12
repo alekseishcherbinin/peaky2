@@ -64,8 +64,11 @@ CONTAMINANT_FAMILIES: dict[str, dict] = {
     "siloxane":      {"add": {"Si": (1, 6), "O": (1, 6), "C": (2, 12), "H": (6, 36)},
                       "adducts": ("[M+H]+", "[M+NH4]+", "[M-H]-"),
                       "note": "PDMS / siloxane column bleed (D3..D6)"},
-    "fluorinated":   {"add": {"F": (1, 17)}, "adducts": ("[M-H]-",),
-                      "note": "PFAS / CF2 series contaminant"},
+    "fluorinated":   {"add": {"F": (1, 17), "O": (0, 6)}, "adducts": ("[M-H]-",),
+                      "note": "PFAS / CF2 series contaminant; O capped at "
+                              "fluorochemical levels -- v16 audit: an open O "
+                              "range gridded junk like C6H5F3O13 onto Br-"
+                              "doublet peaks"},
     "halogen_dbp":   {"add": {"Cl": (1, 4), "Br": (1, 2)}, "adducts": ("[M-H]-",),
                       "note": "halogenated disinfection by-product"},
     "phthalate":     {"add": {"O": (4, 4)}, "adducts": ("[M+H]+", "[M+NH4]+"),

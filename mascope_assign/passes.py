@@ -435,11 +435,15 @@ def commit_winners(ledger: pd.DataFrame, arb: dict, *, pass_no: int, method: str
                     crow = ledger.loc[ledger.peak_id == k["peak_id"]].iloc[0]
                     prow = ledger.loc[ledger.peak_id == k["parent_peak_id"]].iloc[0]
                     child_conf = str(crow["confidence"])
-                    child_weak = not child_conf.startswith(("High", "Good"))
+                    # only High children are immune: a Mascope-confirmed
+                    # two-peak explanation (parent + correct-ratio satellite)
+                    # beats an equal-or-weaker single-peak formula (v16 audit:
+                    # the 462.99/464.99 'Good vs Good' doublet never displaced)
+                    child_immune = child_conf.startswith("High")
                     parent_stronger = (pd.isna(crow["ion_score"])
                                        or (pd.notna(prow["ion_score"]) and
                                            prow["ion_score"] >= crow["ion_score"]))
-                    if child_weak and parent_stronger:
+                    if not child_immune and parent_stronger:
                         L.displace_to_isotopologue(
                             ledger, k["peak_id"], k["parent_peak_id"],
                             iso_label=k["iso_label"], iso_match_score=k["iso_score"])
@@ -457,6 +461,136 @@ def commit_winners(ledger: pd.DataFrame, arb: dict, *, pass_no: int, method: str
     return {"committed": len(committed), "locked": len(locked_ids),
             "iso_attached": n_iso_attached, "iso_displaced": n_displaced,
             "rejected": rejected}
+
+
+# isotope constants for the post-run physics audit
+_D13C = 1.0033548          # 13C - 12C
+_DBR = 1.9979535           # 81Br - 79Br
+_R13C = 0.0107             # 13C natural abundance per carbon
+_R81BR = 0.9728            # 81Br/79Br abundance ratio
+
+
+def _peak_near(mzs: "pd.Series", target: float, ppm: float = 5.0):
+    """Index of the closest ledger peak within ppm of target, else None."""
+    tol = target * ppm * 1e-6
+    d = (mzs - target).abs()
+    i = d.idxmin()
+    return i if d.loc[i] <= tol else None
+
+
+def audit_isotopes(ledger: pd.DataFrame, cfg: PassConfig, *, log=print) -> dict:
+    """Post-run isotope-physics audit. Validates committed M0s against what
+    the isotope pattern REQUIRES, independent of match scores (v16 audit):
+
+    1. Br-doublet repair: two M0s 1.99795 apart at ~1:1 height are one
+       single-Br compound, not two formulas. If the lighter ion carries Br,
+       the heavier peak becomes its 81Br child; if neither formula carries
+       Br, both are wrong (the doublet proves Br) and both are cleared.
+    2. 13C sweeper: attach the obvious unclaimed 13C satellite (right place,
+       right magnitude) as evidence instead of leaving it unexplained.
+    3. 13C carbon clamp: a committed 13C child measures the carbon count;
+       a formula whose C is far outside it is wrong (C19 claimed, ~C11 seen).
+    4. 13C completeness: a formula predicting a comfortably-visible 13C
+       satellite that has NO peak at +1.0034 is wrong.
+    """
+    out = {"doublet_child": 0, "doublet_cleared": 0, "c13_attached": 0,
+           "c13_clamp": 0, "c13_missing": 0}
+    mzs = ledger["mz"]
+
+    # --- 1. Br-doublet repair over committed M0s ---
+    m0 = ledger[(ledger["role"] == L.ROLE_M0)
+                & ~ledger["locked"].astype(bool)].sort_values("mz")
+    rows = list(m0[["peak_id", "mz", "height", "ion_formula"]].itertuples(index=False))
+    for a in range(len(rows)):
+        lt = rows[a]
+        for b in range(a + 1, len(rows)):
+            hv = rows[b]
+            d = hv.mz - lt.mz
+            if d > _DBR + 0.005:
+                break
+            if abs(d - _DBR) > 0.004:
+                continue
+            hr = hv.height / lt.height
+            if not (0.6 <= hr <= 1.45):
+                continue
+            try:
+                if L.role_of(ledger, lt.peak_id) != L.ROLE_M0 \
+                        or L.role_of(ledger, hv.peak_id) != L.ROLE_M0:
+                    continue
+                n_br = C.parse_formula(str(lt.ion_formula)).get("Br", 0)
+                if n_br >= 1:
+                    L.clear_assignment(ledger, hv.peak_id,
+                                       reason=f"isotope audit: 81Br twin of "
+                                              f"{lt.mz:.4f} (ratio {hr:.2f})")
+                    L.attach_isotopologue(ledger, hv.peak_id, lt.peak_id,
+                                          iso_label="81Br")
+                    out["doublet_child"] += 1
+                else:
+                    L.clear_assignment(
+                        ledger, lt.peak_id,
+                        reason=f"isotope audit: Br doublet with {hv.mz:.4f} "
+                               f"(ratio {hr:.2f}) but no Br in formula")
+                    L.clear_assignment(
+                        ledger, hv.peak_id,
+                        reason=f"isotope audit: Br doublet with {lt.mz:.4f} "
+                               f"(ratio {hr:.2f}) but no Br in formula")
+                    out["doublet_cleared"] += 2
+            except L.LedgerError:
+                continue
+
+    # --- 2-4. 13C physics on every surviving M0 ---
+    kids = ledger[ledger["role"] == L.ROLE_ISO]
+    for _, r in ledger[ledger["role"] == L.ROLE_M0].iterrows():
+        if bool(r["locked"]):
+            continue
+        n_c = C.parse_formula(str(r["ion_formula"])).get("C", 0)
+        if n_c < 1:
+            continue
+        expected = float(r["height"]) * _R13C * n_c
+        k = kids[(kids["parent_peak_id"] == r["peak_id"])
+                 & (kids["iso_label"].astype(str) == "13C")]
+        if not len(k):
+            j = _peak_near(mzs, r["mz"] + _D13C)
+            if j is not None and ledger.at[j, "role"] == L.ROLE_UNEXPLAINED \
+                    and expected > 0 \
+                    and 0.3 <= ledger.at[j, "height"] / expected <= 2.5:
+                try:
+                    L.attach_isotopologue(ledger, ledger.at[j, "peak_id"],
+                                          r["peak_id"], iso_label="13C")
+                    out["c13_attached"] += 1
+                    k = ledger.loc[[j]]
+                except L.LedgerError:
+                    pass
+        if len(k):
+            c_est = (float(k.iloc[0]["height"]) / float(r["height"])) / _R13C
+            if n_c >= 8 and abs(c_est - n_c) > max(2.5, 0.35 * n_c):
+                try:
+                    L.clear_assignment(
+                        ledger, r["peak_id"],
+                        reason=f"isotope audit: 13C ratio measures ~C"
+                               f"{c_est:.0f}, formula claims C{n_c}")
+                    out["c13_clamp"] += 1
+                except L.LedgerError:
+                    pass
+        elif expected >= 1.5 * cfg.height_cutoff \
+                and _peak_near(mzs, r["mz"] + _D13C) is None:
+            try:
+                L.clear_assignment(
+                    ledger, r["peak_id"],
+                    reason=f"isotope audit: predicted 13C satellite "
+                           f"({expected:.0f} cps) absent from spectrum")
+                out["c13_missing"] += 1
+            except L.LedgerError:
+                continue
+
+    n = sum(out.values())
+    if n:
+        log(f"[audit] isotope physics: {out['doublet_child']} doublet twins "
+            f"re-attached, {out['doublet_cleared']} no-Br doublet formulas "
+            f"cleared, {out['c13_attached']} 13C satellites attached, "
+            f"{out['c13_clamp']} carbon-clamp clears, "
+            f"{out['c13_missing']} missing-13C clears")
+    return out
 
 
 def audit_mass_gate(ledger: pd.DataFrame, cfg: PassConfig, *, log=print) -> dict:

@@ -114,6 +114,7 @@ def run(sample_id: str, context: str = "ambient-air", *,
 
     # post-run audit: apply the calibrated mass gate to pre-calibration commits
     # (pass 1 Lows) and anything that slipped through with no mass evidence
+    summaries["audit_iso"] = passes.audit_isotopes(led, cfg, log=log)
     summaries["audit"] = passes.audit_mass_gate(led, cfg, log=log)
     _checkpoint("audit")
 

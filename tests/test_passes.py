@@ -421,5 +421,66 @@ check("audit clears 2-4 sigma Low without evidence",
 check("audit keeps 2-4 sigma Low WITH iso child", L.role_of(led_a, "q4") == L.ROLE_M0, out)
 check("audit ledger validates clean", L.validate(led_a) == [], L.validate(led_a))
 
+# ---------- audit_isotopes: post-run isotope-physics audit ----------
+def mk_ledger(rows):
+    led = L.new_ledger(pd.DataFrame(
+        {"peak_id": [r[0] for r in rows], "mz": [r[1] for r in rows],
+         "height": [r[2] for r in rows]}))
+    return led
+
+def commit(led, pid, neutral, ion, conf="Good", score=0.9):
+    L.commit_assignment(led, pid, neutral_formula=neutral, adduct="[M+Br]-",
+                        ion_formula=ion, ion_score=score, ppm_error=0.1,
+                        pass_no=3, method="test", confidence=conf,
+                        commentary="t")
+
+ACFG = P.PassConfig(height_cutoff=100.0)
+
+# v16 case: 462.99/464.99 — two Good M0s 1.99795 apart, ~1:1; light ion has Br
+led = mk_ledger([("La", 462.9933, 26882.0), ("Hb", 464.9913, 25609.0),
+                 ("X", 463.9966, 3450.0)])   # X = 13C of La
+commit(led, "La", "C12H12F12", "C12H12BrF12-")
+commit(led, "Hb", "C11H9F7O12", "C11H8F7O12-")
+s = P.audit_isotopes(led, ACFG, log=lambda *a: None)
+check("audit: Br-doublet heavy M0 demoted to 81Br child",
+      L.role_of(led, "Hb") == L.ROLE_ISO and s["doublet_child"] == 1, s)
+check("audit: 13C satellite swept up as evidence",
+      L.role_of(led, "X") == L.ROLE_ISO and s["c13_attached"] == 1, s)
+
+# doublet where NEITHER formula carries Br -> both cleared
+led = mk_ledger([("Lc", 284.0501, 641.0), ("Hd", 286.0480, 543.0)])
+commit(led, "Lc", "C9H20NO4", "C9H20NO4-")    # no Br anywhere
+commit(led, "Hd", "C14H10O3", "C15H10O6-")
+s = P.audit_isotopes(led, ACFG, log=lambda *a: None)
+check("audit: no-Br doublet clears both formulas",
+      L.role_of(led, "Lc") == L.ROLE_UNEXPLAINED
+      and L.role_of(led, "Hd") == L.ROLE_UNEXPLAINED
+      and s["doublet_cleared"] == 2, s)
+
+# 13C clamp: formula claims C19, satellite measures ~C11
+led = mk_ledger([("M", 444.9861, 4761.0), ("K", 445.9895, 564.0)])
+commit(led, "M", "C19H15N2O4S", "C19H14BrN2O4S-")
+L.attach_isotopologue(led, "K", "M", iso_label="13C")
+s = P.audit_isotopes(led, ACFG, log=lambda *a: None)
+check("audit: 13C carbon clamp clears C19-vs-C11",
+      L.role_of(led, "M") == L.ROLE_UNEXPLAINED and s["c13_clamp"] == 1, s)
+
+# 13C missing: big peak, formula predicts a visible satellite, none exists
+led = mk_ledger([("N", 168.9505, 10300.0)])
+commit(led, "N", "C3H6O3", "C3H6BrO3-")
+s = P.audit_isotopes(led, ACFG, log=lambda *a: None)
+check("audit: predicted-13C-absent clears the formula",
+      L.role_of(led, "N") == L.ROLE_UNEXPLAINED and s["c13_missing"] == 1, s)
+
+# sanity: a CORRECT assignment survives all four checks
+led = mk_ledger([("P", 295.0184, 2965.0), ("Q", 297.0164, 2924.0),
+                 ("R", 296.0218, 320.0)])
+commit(led, "P", "C10H16O5", "C10H16BrO5-")
+L.attach_isotopologue(led, "Q", "P", iso_label="81Br")
+s = P.audit_isotopes(led, ACFG, log=lambda *a: None)
+check("audit: correct assignment untouched (13C attached, nothing cleared)",
+      L.role_of(led, "P") == L.ROLE_M0 and s["c13_clamp"] == 0
+      and s["c13_missing"] == 0 and s["c13_attached"] == 1, s)
+
 print(f"\n{PASS} passed, {FAIL} failed")
 sys.exit(1 if FAIL else 0)
