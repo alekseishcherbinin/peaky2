@@ -51,12 +51,16 @@ exit non-zero on failure.
 - Heteroatoms enter the neutral only with positive evidence; relaxed filtering is
   "earned by evidence" (chain membership / isotope confirmation), never default.
 
-## Current status (2026-06-12, v28)
+## Current status (2026-06-12, v29)
 
 Test sample `<sample-id>` (Br-CIMS, atmospheric), cutoff 100:
-- 261 M0, 56.5% peaks / 89.3% signal explained (count-first reporting; the old
-  95% headline was fiction-padded), 21/21 flagships, ~180 s, ledger clean.
-  Outputs archived per-version in `~/mascope-output/assign-dev/v*/`.
+- 261 M0, 56.4% peaks / 89.3% signal explained (count-first reporting; the old
+  95% headline was fiction-padded), 21/21 flagships, ledger clean.
+  **Tiered: 173 Identified / 88 Candidate** (`tiers.py`; mechanical rules,
+  candidate-density currency, lattice-monster + BrCl demotions, same-ion
+  decomposition aliases excluded). Excel is an 11-sheet styled workbook
+  (Identified / Candidates-per-formula / evidence-characterized Unassigned +
+  legend). Outputs archived per-version in `~/mascope-output/assign-dev/v*/`.
 - Pipeline is now 6 passes (0: known species, 1: backbone+calibration, 2: GKA,
   3: evidence-opened families, 4: residual iso-pairs/series, 5: completion)
   plus two post-run audits (isotope physics, calibrated mass gate).

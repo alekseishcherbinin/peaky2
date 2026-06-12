@@ -1,13 +1,15 @@
-# Roadmap — state after v28 (2026-06-12) and what comes next
+# Roadmap — state after v29 (2026-06-12) and what comes next
 
 ## Where the pipeline stands
 
-v28 on the reference sample `<sample-id>` (Br-CIMS, ambient air):
-**261 M0 / 56.5% peaks / 89.3% signal explained, 21/21 flagships, 0 junk,
-ledger clean, ~180 s.** Run `python3 scripts/check_flagships.py <ledger.csv>`
-after ANY change — it asserts the validated identifications (TFA both
-channels, hydroxy-acid ladder, monoterpene rungs + Br partners, silanediol
-series, HO2/HNO3/HNO2/HNO4) and the banned junk classes.
+v29 on the reference sample `<sample-id>` (Br-CIMS, ambient air):
+**261 M0 (173 Identified / 88 Candidate) / 56.4% peaks / 89.3% signal
+explained, 21/21 flagships, 0 junk, ledger clean.** Run
+`python3 scripts/check_flagships.py <ledger.csv>` after ANY change — it
+asserts the validated identifications (TFA both channels, hydroxy-acid
+ladder, monoterpene rungs + Br partners, silanediol series,
+HO2/HNO3/HNO2/HNO4), that every flagship is tier **Identified**, and the
+banned junk classes (incl. O>=12 in Identified).
 
 Pipeline shape: pass 0 (known species: contaminant series + atmospheric
 acids/radicals, locked, twin-gated) → pass 1 (CHO/CHON backbone + calibration)
