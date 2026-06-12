@@ -260,8 +260,10 @@ def arbitrate(scored: pd.DataFrame, cfg: PassConfig) -> dict:
         n_iso = int(iso_count.get((top["compound_formula"], top["ion_formula"]), 0))
         runner_eff = float(grp.iloc[1]["eff_score"]) if len(grp) > 1 else None
         tied = runner_eff is not None and (float(top["eff_score"]) - runner_eff) < 0.05
+        # keep up to 6 alternatives: candidate DENSITY is the report's
+        # confidence currency (tiers.py), and a 3-deep list saturates too early
         alts = []
-        for _, r in grp.iloc[1:4].iterrows():
+        for _, r in grp.iloc[1:7].iterrows():
             alts.append({"formula": r["compound_formula"], "adduct": r["adduct_label"],
                          "ion_score": _f(r["ion_score"]), "raw_score": _f(r["raw_score"]),
                          "eff_score": _f(r["eff_score"]), "ppm": _f(r["ppm_error"])})
@@ -274,6 +276,8 @@ def arbitrate(scored: pd.DataFrame, cfg: PassConfig) -> dict:
             "compound_score": _f(top["compound_score"]),
             "raw_score": _f(top["raw_score"]),
             "eff_score": _f(top["eff_score"]),
+            "eff_margin": (None if runner_eff is None
+                           else float(top["eff_score"]) - runner_eff),
             "ppm_error": _f(top["ppm_error"]),
             "n_iso": n_iso,
             "tied": bool(tied),
@@ -417,6 +421,8 @@ def commit_winners(ledger: pd.DataFrame, arb: dict, *, pass_no: int, method: str
                 ledger, pid, neutral_formula=w["neutral"], adduct=w["adduct"],
                 ion_formula=w["ion_formula"], ion_score=w["ion_score"],
                 compound_score=w["compound_score"], ppm_error=w["ppm_error"],
+                eff_score=w.get("eff_score"), eff_margin=w.get("eff_margin"),
+                tied=w.get("tied"),
                 pass_no=pass_no, method=method, confidence=conf,
                 commentary=commentary, alternatives=w["alternatives"],
                 isotopologues=_iso_list(kids, pid),

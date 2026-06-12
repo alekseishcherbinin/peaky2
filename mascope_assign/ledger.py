@@ -40,9 +40,15 @@ _ASSIGN_COLS: dict[str, object] = {
     "ion_formula": pd.NA,
     "ion_score": np.nan,
     "compound_score": np.nan,
+    "eff_score": np.nan,       # arbitration's complexity-penalised score
+    "eff_margin": np.nan,      # eff-score lead over the best alternative
+    "tied": pd.NA,             # arbitration near-tie verdict (bool)
     "ppm_error": np.nan,
     "dbe": np.nan,
     "confidence": pd.NA,
+    "tier": pd.NA,             # report tier: Identified | Candidate (tiers.py)
+    "tier_reason": pd.NA,
+    "candidate_density": pd.NA,  # formulas within CLOSE_MARGIN (winner incl.)
     "role": ROLE_UNEXPLAINED,
     "parent_peak_id": pd.NA,
     "iso_label": pd.NA,
@@ -118,6 +124,9 @@ def commit_assignment(
     ion_formula: str | None = None,
     ion_score: float,
     compound_score: float | None = None,
+    eff_score: float | None = None,
+    eff_margin: float | None = None,
+    tied: bool | None = None,
     ppm_error: float | None = None,
     pass_no: int,
     method: str,
@@ -154,6 +163,11 @@ def commit_assignment(
     ledger.at[i, "ion_formula"] = ion_formula if ion_formula is not None else neutral_formula
     ledger.at[i, "ion_score"] = float(ion_score)
     ledger.at[i, "compound_score"] = (np.nan if compound_score is None else float(compound_score))
+    ledger.at[i, "eff_score"] = (np.nan if eff_score is None or pd.isna(eff_score)
+                                 else float(eff_score))
+    ledger.at[i, "eff_margin"] = (np.nan if eff_margin is None or pd.isna(eff_margin)
+                                  else float(eff_margin))
+    ledger.at[i, "tied"] = pd.NA if tied is None else bool(tied)
     ledger.at[i, "ppm_error"] = (np.nan if ppm_error is None else float(ppm_error))
     ledger.at[i, "dbe"] = C.dbe(neutral_formula)
     ledger.at[i, "confidence"] = confidence
@@ -203,7 +217,9 @@ def attach_isotopologue(
 _ASSIGNMENT_FIELDS = {
     "neutral_formula": pd.NA, "adduct": pd.NA, "ion_formula": pd.NA,
     "ion_score": np.nan, "compound_score": np.nan, "ppm_error": np.nan,
+    "eff_score": np.nan, "eff_margin": np.nan, "tied": pd.NA,
     "dbe": np.nan, "confidence": pd.NA, "pass_no": np.nan, "method": pd.NA,
+    "tier": pd.NA, "tier_reason": pd.NA, "candidate_density": pd.NA,
     "anchor_peak_id": pd.NA, "series_unit": pd.NA,
     "alternatives": pd.NA, "isotopologues": pd.NA,
 }
@@ -331,5 +347,9 @@ def stats(ledger: pd.DataFrame) -> dict:
     if "confidence" in ledger.columns:
         out["by_confidence"] = (
             ledger.loc[ledger["role"] == ROLE_M0, "confidence"]
+            .value_counts(dropna=True).to_dict())
+    if "tier" in ledger.columns:
+        out["by_tier"] = (
+            ledger.loc[ledger["role"] == ROLE_M0, "tier"]
             .value_counts(dropna=True).to_dict())
     return out

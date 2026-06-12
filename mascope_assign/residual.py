@@ -344,6 +344,8 @@ def stage_a_iso_pairs(client, sample_id: str, ledger: pd.DataFrame, profile,
                 ledger, pid, neutral_formula=w["neutral"], adduct=w["adduct"],
                 ion_formula=w["ion_formula"], ion_score=w["ion_score"],
                 compound_score=w["compound_score"], ppm_error=w["ppm_error"],
+                eff_score=w.get("eff_score"), eff_margin=w.get("eff_margin"),
+                tied=w.get("tied"),
                 pass_no=4, method="residual:iso-pair", confidence=conf,
                 commentary=(f"Pass 4 (iso-pair): {p['element']} doublet "
                             f"(ratio {p['ratio']:.2f}, n_{p['element']}="
@@ -457,6 +459,8 @@ def stage_b_series(client, sample_id: str, ledger: pd.DataFrame, profile,
                 ledger, pid, neutral_formula=f, adduct=w["adduct"],
                 ion_formula=w["ion_formula"], ion_score=w["ion_score"],
                 compound_score=w["compound_score"], ppm_error=w["ppm_error"],
+                eff_score=w.get("eff_score"), eff_margin=w.get("eff_margin"),
+                tied=w.get("tied"),
                 pass_no=4, method="residual:series", confidence=conf,
                 commentary=(f"Pass 4 (deep series): {meta['steps']:+d}x"
                             f"{meta['unit']} from anchor {meta['anchor']} "
@@ -539,4 +543,6 @@ def characterize_residual(ledger: pd.DataFrame, *, min_height: float = 0.0) -> p
             "tier": tier, "twin_of": twin_of,
             "c_count": None if not clamp else f"{clamp[0]}-{clamp[1]}",
             "n_Br": nbr, "n_Cl": ncl})
-    return pd.DataFrame(rows).sort_values("height", ascending=False)
+    cols = ["peak_id", "mz", "height", "tier", "twin_of", "c_count", "n_Br", "n_Cl"]
+    return (pd.DataFrame(rows, columns=cols)
+            .sort_values("height", ascending=False))

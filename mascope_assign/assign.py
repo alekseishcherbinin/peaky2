@@ -10,7 +10,7 @@ import argparse
 import json
 
 from . import (chemistry, contexts, io_mascope, isotopes, ledger, passes,
-               reagents, residual, series_gka)
+               reagents, residual, series_gka, tiers)
 
 __version__ = "0.2.0"
 
@@ -25,6 +25,7 @@ MODULE_VERSIONS = {
     "reagents": reagents.__version__,
     "passes": passes.__version__,
     "residual": residual.__version__,
+    "tiers": tiers.__version__,
 }
 
 
@@ -134,6 +135,12 @@ def run(sample_id: str, context: str = "ambient-air", *,
         n_reag2 = reagents.label_reagents(led, reagent, ppm=12.0)
         if n_reag2:
             log(f"[run] post-labeled {n_reag2} more reagent-cluster peaks")
+
+    # report tier on every committed assignment: Identified vs Candidate
+    # (mechanical rules over evidence columns; ROADMAP 2)
+    tiers.apply_tiers(led)
+    tc = led.loc[led["role"] == ledger.ROLE_M0, "tier"].value_counts().to_dict()
+    log(f"[run] tiers {tc}")
 
     problems = ledger.validate(led)
     if problems:
