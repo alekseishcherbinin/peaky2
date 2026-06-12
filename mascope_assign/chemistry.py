@@ -92,6 +92,13 @@ ADDUCT_SHIFTS: dict[str, float] = {
     #                reading relabels onto it -- needs to be registered here).
     "[M+Br2]-":    2 * M["Br"] + M_E,
     "[M+HBr+Br]-": M["H"] + 2 * M["Br"] + M_E,
+    # tribromide channels (Br3- is a DOMINANT reagent ion in this CH2Br2 source,
+    # ~129k cps; server mechanism +Br3- registered 2026-06-12):
+    #   [M+Br3]-      M . Br3- tribromide cluster (3 Br, native mechanism)
+    #   [M+HBr+Br2]-  M . HBr . Br2-  (covalent-Br alias of [M+Br2]- analytes,
+    #                 for _prefer_adduct_reading to relabel onto)
+    "[M+Br3]-":     3 * M["Br"] + M_E,
+    "[M+HBr+Br2]-": M["H"] + 3 * M["Br"] + M_E,
     # positive mode
     "[M+H]+":   M["H"] - M_E,
     "[M+Na]+":  22.9897692820 - M_E,

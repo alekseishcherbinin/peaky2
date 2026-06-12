@@ -747,6 +747,35 @@ def demote_carbon_inconsistent(ledger: pd.DataFrame, cfg: PassConfig, *,
     return n
 
 
+def demote_massgate_monsters(ledger: pd.DataFrame, cfg: PassConfig, *,
+                             log=print) -> int:
+    """Clear pre-calibration M0s whose calibrated mass error is egregious
+    (z > cal_z_pattern) BEFORE pass 4, the mass-gate twin of
+    demote_carbon_inconsistent. Pass 1 grabs bright halogen-doublet peaks with
+    high-O CHON mass-fits that the END mass-gate audit clears (e.g. C11H10N2O16
+    on the 424.99 di-bromide peak, z=7.3) -- too late for pass 4 to re-claim.
+    Only the clear monsters (z > pattern band) are cleared here; the 2..4-sigma
+    tier is left for the end-of-run audit to keep this conservative."""
+    if cfg.cal_mu is None:
+        return 0
+    n = 0
+    for _, r in ledger[(ledger["role"] == L.ROLE_M0)
+                       & ~ledger["locked"].astype(bool)].iterrows():
+        z = z_of(r["ppm_error"], cfg)
+        if z is not None and z > cfg.cal_z_pattern:
+            try:
+                L.clear_assignment(
+                    ledger, r["peak_id"],
+                    reason=f"mass-gate (pre-pass-4): z={z:.1f} > {cfg.cal_z_pattern}")
+                n += 1
+            except L.LedgerError:
+                continue
+    if n:
+        log(f"[pre-pass4] mass-gate demoted {n} z>{cfg.cal_z_pattern} monsters "
+            f"-> re-offered to the residual passes")
+    return n
+
+
 def audit_isotopes(ledger: pd.DataFrame, cfg: PassConfig, *, log=print) -> dict:
     """Post-run isotope-physics audit. Validates committed M0s against what
     the isotope pattern REQUIRES, independent of match scores (v16 audit):

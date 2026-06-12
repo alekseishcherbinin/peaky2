@@ -9,8 +9,8 @@ from __future__ import annotations
 import argparse
 import json
 
-from . import (chemistry, contexts, io_mascope, isotopes, ledger, passes,
-               reagents, residual, series_gka, tiers)
+from . import (chemistry, contexts, io_mascope, isotopes, ladders, ledger,
+               passes, reagents, residual, series_gka, tiers)
 
 __version__ = "0.2.0"
 
@@ -25,6 +25,7 @@ MODULE_VERSIONS = {
     "reagents": reagents.__version__,
     "passes": passes.__version__,
     "residual": residual.__version__,
+    "ladders": ladders.__version__,
     "tiers": tiers.__version__,
 }
 
@@ -58,7 +59,7 @@ def run(sample_id: str, context: str = "ambient-air", *,
     #   +CO3-  carbonate adducts of aldehydes from lingering air ions
     #   +Br2-  di-bromide reagent-cluster adducts of analytes -- the n_Br=2
     #          "C/H lattice" residual is biogenic SOA seen this way (2026-06-12)
-    opportunistic = ["[M+CO3]-", "[M+Br2]-"]
+    opportunistic = ["[M+CO3]-", "[M+Br2]-", "[M+Br3]-"]
     extra_channels = [a for a in opportunistic
                       if io_mascope.resolve_mechanism_ids(
                           client, [io_mascope.ADDUCT_TO_MECH[a]])]
@@ -125,7 +126,8 @@ def run(sample_id: str, context: str = "ambient-air", *,
         # iso-pair enumeration then re-claims them as di-bromide SOA clusters.
         summaries["carbon_clamp_pre4"] = _safe(
             "carbon_clamp_pre4",
-            lambda: {"demoted": passes.demote_carbon_inconsistent(led, cfg, log=log)})
+            lambda: {"demoted": passes.demote_carbon_inconsistent(led, cfg, log=log),
+                     "massgate": passes.demote_massgate_monsters(led, cfg, log=log)})
         summaries["pass4"] = _safe("pass4", lambda: residual.explain_residual(
             client, sample_id, led, profile, pre, cfg, adducts,
             reagent=reagent, log=log))
@@ -146,6 +148,14 @@ def run(sample_id: str, context: str = "ambient-air", *,
         n_reag2 = reagents.label_reagents(led, reagent, ppm=12.0)
         if n_reag2:
             log(f"[run] post-labeled {n_reag2} more reagent-cluster peaks")
+
+    # Pass 6: anchored ladder gap-fill -- walk the homolog/oxidation diagonals
+    # out from committed anchors and fill the gaps (the C15H22O3->O4->O5 type
+    # series). Runs AFTER the audits so their mass/isotope gates don't clear its
+    # pattern-evidenced (ladder-membership) completions. Candidate tier only.
+    if do_pass5:
+        summaries["pass6_ladder"] = _safe("pass6_ladder", lambda: ladders.run_ladder_gapfill(
+            client, sample_id, led, profile, cfg, adducts, log=log))
 
     # report tier on every committed assignment: Identified vs Candidate
     # (mechanical rules over evidence columns; ROADMAP 2)
