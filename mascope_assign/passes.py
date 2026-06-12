@@ -671,6 +671,19 @@ def audit_isotopes(ledger: pd.DataFrame, cfg: PassConfig, *, log=print) -> dict:
             if any(_peak_near(mzs, float(t["mz"]) + _D13C) is not None
                    for _, t in twins.iterrows()):
                 continue
+            # cross-channel fallback: the SAME neutral independently assigned
+            # High/Good on another peak (other adduct) is positive evidence
+            # that outweighs one absent satellite -- an absent 13C can be a
+            # peak-picker loss, an agreeing second channel cannot. (v21
+            # cleared five sub-ppm [M+Br]- partners of Good [M-H]-
+            # assignments, e.g. C10H16O6 at 311.013 / 2.4k cps.)
+            others = ledger[(ledger["role"] == L.ROLE_M0)
+                            & (ledger["peak_id"] != r["peak_id"])
+                            & (ledger["neutral_formula"] == r["neutral_formula"])
+                            & ledger["confidence"].astype(str)
+                            .str.startswith(("High", "Good"))]
+            if len(others):
+                continue
             try:
                 L.clear_assignment(
                     ledger, r["peak_id"],

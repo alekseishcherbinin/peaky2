@@ -502,6 +502,20 @@ L.attach_isotopologue(led, "Tw2", "Lb", iso_label="81Br")
 s = P.audit_isotopes(led, ACFG, log=lambda *a: None)
 check("audit: no satellite anywhere still clears",
       L.role_of(led, "Lb") == L.ROLE_UNEXPLAINED and s["c13_missing"] == 1, s)
+# cross-channel fallback: missing 13C but the SAME neutral assigned Good on
+# another peak (other adduct) -> positive evidence wins, no clear (v21 case)
+mh = CH.ion_mz("C10H16O6", "[M-H]-")
+mbr = CH.ion_mz("C10H16O6", "[M+Br]-")
+led = mk_ledger([("MH", mh, 1060.0), ("MB", mbr, 2426.0)])
+L.commit_assignment(led, "MH", neutral_formula="C10H16O6", adduct="[M-H]-",
+                    ion_formula="C10H15O6-", ion_score=0.87, ppm_error=-0.9,
+                    pass_no=1, method="t", confidence="Good", commentary="t")
+L.commit_assignment(led, "MB", neutral_formula="C10H16O6", adduct="[M+Br]-",
+                    ion_formula="C10H16BrO6-", ion_score=0.86, ppm_error=-0.5,
+                    pass_no=1, method="t", confidence="Good", commentary="t")
+s = P.audit_isotopes(led, ACFG, log=lambda *a: None)
+check("audit: cross-channel agreement blocks the missing-13C clear",
+      L.role_of(led, "MB") == L.ROLE_M0 and s["c13_missing"] == 0, s)
 
 # ---------- pass 5: known-neutral completion ----------
 from mascope_assign import contexts as XC  # noqa: E402
