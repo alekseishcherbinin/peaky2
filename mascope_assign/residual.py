@@ -41,7 +41,8 @@ from . import chemistry as C
 from . import io_mascope as IO
 from . import ledger as L
 from . import series_gka as G
-from .passes import PassConfig, arbitrate, confidence_label, z_of, _f
+from .passes import (PassConfig, arbitrate, confidence_label, z_of, _f,
+                     _prefer_adduct_reading)
 
 __version__ = "0.2.0"
 
@@ -340,6 +341,13 @@ def stage_a_iso_pairs(client, sample_id: str, ledger: pd.DataFrame, profile,
                 suffix="iso-pair"))
             if conf == "Reject":
                 continue
+            # reagent-halogen reading: a covalent Y(Br) [M+Br]- iso-pair winner
+            # is the SAME ion as the Br-free SOA core Y' [M+HBr+Br]- (di-bromide
+            # reagent cluster). Prefer the cluster reading so the reported
+            # neutral is bromine-free (e.g. 409.0015 C15H23BrO3 -> C15H22O3
+            # [M+HBr+Br]-), consistent with passes 1/3/5.
+            w = _prefer_adduct_reading(w, cfg)
+            note = w["_relabel_note"] if "_relabel_note" in w else ""
             L.commit_assignment(
                 ledger, pid, neutral_formula=w["neutral"], adduct=w["adduct"],
                 ion_formula=w["ion_formula"], ion_score=w["ion_score"],
@@ -352,7 +360,7 @@ def stage_a_iso_pairs(client, sample_id: str, ledger: pd.DataFrame, profile,
                             f"{p['n_halogen']} in ion) anchors this peak; "
                             f"{w['neutral']} {w['adduct']} scored "
                             f"{w['raw_score']:.2f} by Mascope. Accepted: {why}. "
-                            f"DBE-only plausibility (no ratio filters)."),
+                            f"DBE-only plausibility (no ratio filters).{note}"),
                 alternatives=w["alternatives"])
             out["committed"] += 1
             # attach the heavy partner: prefer Mascope's own attribution,
