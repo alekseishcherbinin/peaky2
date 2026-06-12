@@ -2,8 +2,8 @@
 
 ## Where the pipeline stands
 
-v29 on the reference sample `<sample-id>` (Br-CIMS, ambient air):
-**261 M0 (173 Identified / 88 Candidate) / 56.4% peaks / 89.3% signal
+v32 on the reference sample `<sample-id>` (Br-CIMS, ambient air):
+**269 M0 (179 Identified / 90 Candidate) / 58.0% peaks / 90.3% signal
 explained, 21/21 flagships, 0 junk, ledger clean.** Run
 `python3 scripts/check_flagships.py <ledger.csv>` after ANY change — it
 asserts the validated identifications (TFA both channels, hydroxy-acid
@@ -26,10 +26,21 @@ isotope-physics audit → calibrated mass-gate audit.
 - **Silicon**: solved (silanediol ladder, ~115k cps, locked contaminant).
 - **Chlorine**: faint (Cl-H at 6x decoys), consistent with the known BrCl
   mixed-halogen family — a thread, not a dimension.
-- **What remains**: ~40 bright unknowns in multi-halogen C/H lattices
-  (CH2 93x, clean C2H4/H2/C2 ladders, Br/BrCl-twinned, heavy defect).
-  PROVEN unsolvable from the sum spectrum alone: no CHNOSPSi+I formula closes
-  under the carbon clamp in 7 adduct frames; candidates ambiguous.
+- **The C/H lattice is SOLVED (v30-v32): it was biogenic SOA, not exotic
+  organohalogens.** The "proven unsolvable" verdict had a GAP -- it never
+  tested the di-bromide *cluster* frame. The bright n_Br=2 peaks are
+  mono-/sesquiterpene oxidation products detected as `[M+HBr+Br]-` reagent
+  clusters (covalent-Br2 and a Br2 reagent adduct are the SAME ion, so the
+  server can't separate them; chemistry + sub-ppm cores pick the cluster).
+  Stripping 2 Br gives clean low-DBE cores forming the C2H4 GKA ladder:
+  409.0015 = C15H22O3 (0.93 ion score, 5 isotopologues). 10 assigned so far.
+- **Still open in the lattice**: ~4 bright n_Br=2 peaks (424.99, 356.93,
+  342.91, 574.97) remain unexplained -- their O15/16 monsters are cleared by
+  the END mass-gate audit (not the pre-pass-4 carbon clamp), too late to
+  re-claim; and the pass-3 cluster-proposal path picks off-by-H2 cores that
+  fail the mass gate. Fix next: run the mass-gate demotion pre-pass-4 too, and
+  tighten cluster-proposal H-count. The deeper terpene-SOA families beyond
+  these are still time-series territory.
 
 ## Next big improvements, in priority order
 

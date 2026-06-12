@@ -51,16 +51,26 @@ exit non-zero on failure.
 - Heteroatoms enter the neutral only with positive evidence; relaxed filtering is
   "earned by evidence" (chain membership / isotope confirmation), never default.
 
-## Current status (2026-06-12, v29)
+## Current status (2026-06-12, v32)
 
 Test sample `<sample-id>` (Br-CIMS, atmospheric), cutoff 100:
-- 261 M0, 56.4% peaks / 89.3% signal explained (count-first reporting; the old
+- 269 M0, 58.0% peaks / 90.3% signal explained (count-first reporting; the old
   95% headline was fiction-padded), 21/21 flagships, ledger clean.
-  **Tiered: 173 Identified / 88 Candidate** (`tiers.py`; mechanical rules,
+  **Tiered: 179 Identified / 90 Candidate** (`tiers.py`; mechanical rules,
   candidate-density currency, lattice-monster + BrCl demotions, same-ion
   decomposition aliases excluded). Excel is an 11-sheet styled workbook
   (Identified / Candidates-per-formula / evidence-characterized Unassigned +
   legend). Outputs archived per-version in `~/mascope-output/assign-dev/v*/`.
+- **Di-bromide SOA clusters (the ex-"unsolvable C/H lattice")**: the bright
+  n_Br=2 residual is biogenic SOA (mono-/sesquiterpene oxidation products)
+  detected as `[M+HBr+Br]-` reagent clusters, NOT exotic organohalogens. 10
+  now assigned (e.g. 409.0015 = C15H22O3). Enabled by registering the
+  di-bromide frames + the user's server-side `+Br2-` mechanism, and a
+  pre-pass-4 carbon-clamp that frees O15-monster-occupied peaks for re-claim.
+- **Ambient acids un-buried**: `[Br1+acid]-` is the `[M+Br]-` analyte channel,
+  so formic acid (232k cps), acetic, pinic etc. are now Identified analytes,
+  not "reagent". Reagent role bucket 24 -> 11; even-n bare clusters (Br2-.)
+  labelled.
 - Pipeline is now 6 passes (0: known species, 1: backbone+calibration, 2: GKA,
   3: evidence-opened families, 4: residual iso-pairs/series, 5: completion)
   plus two post-run audits (isotope physics, calibrated mass gate).
