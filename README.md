@@ -51,16 +51,25 @@ exit non-zero on failure.
 - Heteroatoms enter the neutral only with positive evidence; relaxed filtering is
   "earned by evidence" (chain membership / isotope confirmation), never default.
 
-## Current status (2026-06-12, v32)
+## Current status (2026-06-12, v35)
 
 Test sample `<sample-id>` (Br-CIMS, atmospheric), cutoff 100:
-- 269 M0, 58.0% peaks / 90.3% signal explained (count-first reporting; the old
+- 276 M0, 58.6% peaks / 90.6% signal explained (count-first reporting; the old
   95% headline was fiction-padded), 21/21 flagships, ledger clean.
-  **Tiered: 179 Identified / 90 Candidate** (`tiers.py`; mechanical rules,
+  **Tiered: 182 Identified / 94 Candidate** (`tiers.py`; mechanical rules,
   candidate-density currency, lattice-monster + BrCl demotions, same-ion
   decomposition aliases excluded). Excel is an 11-sheet styled workbook
   (Identified / Candidates-per-formula / evidence-characterized Unassigned +
   legend). Outputs archived per-version in `~/mascope-output/assign-dev/v*/`.
+- **Pass 6 ladder gap-fill (`ladders.py`)**: walks homolog/oxidation diagonals
+  out from committed anchors (+O/+CO/+CO2/+CH2O/±CH2/+C2H4/-H2O, same adduct)
+  and fills the gaps, gated hard against the false positives the adversarial
+  diagonal analysis surfaced (fluorinated/Si contaminant ladders excluded,
+  81Br/13C isotope-satellite guard, O<=min(C,9), unexplained-only, Candidate
+  tier). Di-bromide [M+HBr+Br]- gaps need the +HBr pairing (bromine-free
+  neutral also at [M+Br]-) as corroboration. Adds 7 SOA homolog/oxidation
+  rungs. The diagonals are MOSTLY contaminants + isotope satellites, not SOA —
+  only a handful of genuine biogenic-SOA ladders survive verification.
 - **Di-bromide SOA clusters (the ex-"unsolvable C/H lattice")**: the bright
   n_Br=2 residual is biogenic SOA (mono-/sesquiterpene oxidation products)
   detected as `[M+HBr+Br]-` reagent clusters, NOT exotic organohalogens. 10

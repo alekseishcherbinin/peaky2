@@ -2,8 +2,8 @@
 
 ## Where the pipeline stands
 
-v32 on the reference sample `<sample-id>` (Br-CIMS, ambient air):
-**269 M0 (179 Identified / 90 Candidate) / 58.0% peaks / 90.3% signal
+v35 on the reference sample `<sample-id>` (Br-CIMS, ambient air):
+**276 M0 (182 Identified / 94 Candidate) / 58.6% peaks / 90.6% signal
 explained, 21/21 flagships, 0 junk, ledger clean.** Run
 `python3 scripts/check_flagships.py <ledger.csv>` after ANY change — it
 asserts the validated identifications (TFA both channels, hydroxy-acid
@@ -16,7 +16,9 @@ acids/radicals, locked, twin-gated) → pass 1 (CHO/CHON backbone + calibration)
 → pass 2 (GKA series) → pass 3 (evidence-opened contaminant families) →
 pass 4 (residual: iso-pairs incl. BrCl, deep series, carbon-clamped) →
 pass 5 (known-neutral completion: cross-channel + series gaps) →
-isotope-physics audit → calibrated mass-gate audit.
+isotope-physics audit → calibrated mass-gate audit →
+pass 6 (ladder gap-fill: homolog/oxidation diagonal completion, anchored,
+satellite-guarded, +HBr-pairing-gated for di-bromide).
 
 ## What the residual IS (eliminated dimensions — do not re-chase)
 
@@ -34,13 +36,23 @@ isotope-physics audit → calibrated mass-gate audit.
   server can't separate them; chemistry + sub-ppm cores pick the cluster).
   Stripping 2 Br gives clean low-DBE cores forming the C2H4 GKA ladder:
   409.0015 = C15H22O3 (0.93 ion score, 5 isotopologues). 10 assigned so far.
-- **Still open in the lattice**: ~4 bright n_Br=2 peaks (424.99, 356.93,
-  342.91, 574.97) remain unexplained -- their O15/16 monsters are cleared by
-  the END mass-gate audit (not the pre-pass-4 carbon clamp), too late to
-  re-claim; and the pass-3 cluster-proposal path picks off-by-H2 cores that
-  fail the mass gate. Fix next: run the mass-gate demotion pre-pass-4 too, and
-  tighten cluster-proposal H-count. The deeper terpene-SOA families beyond
-  these are still time-series territory.
+- **Diagonals characterized (v33-v35, workflow + live validation): MOSTLY NOT
+  SOA.** The rotating-GKA diagonals are dominated by fluorinated-contaminant
+  CH2/C2H4O homolog ladders (perfluoro [M+Br]-) and 81Br/13C isotope satellites
+  masquerading as series members; cross-adduct ladders at non-integer X are
+  coincidences. Only a handful of genuine biogenic-SOA homolog/oxidation
+  ladders survive adversarial verification -- pass 6 fills them (C12H16O2 +CH2,
+  C12H20O3 +C2H4, C11H24O3 -CH2, the C15H24O3 oxidation rung, and the di-bromide
+  C9/C10/C11 C2H4 ladder via the +HBr pairing). 424.99 (C15H22O4) remains a
+  straggler (satellite-guard / anchor edge case). LESSON: a non-integer GKA
+  rotation makes contaminant ladders and isotope satellites look like SOA
+  series -- adversarial verification (constant-DBE, same-adduct, satellite
+  guard, live score) is mandatory before encoding any diagonal as chemistry.
+- **Reagent = dibromomethane (CH2Br2)** -> Br-/Br2-/Br3- bromide clusters
+  (Br3- DOMINANT, ~129k cps) + trace HBr (HBr.Br- at 158.84). No intact CH2Br2
+  adduct ions. [M+HBr+Br]- is a real minor channel (the di-bromide SOA
+  clusters), gated by the +HBr pairing. [M+Br3]- is NOT a blanket scoring
+  channel (it timed out batches, lost 40 base M0s).
 
 ## Next big improvements, in priority order
 

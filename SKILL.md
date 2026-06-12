@@ -128,14 +128,15 @@ already open. `run_assignment.py` emits one per run.
 | `passes.py` | arbitration + the 4-pass director |
 | `residual.py` | Pass 4 residual explainer |
 | `tiers.py` | Identified/Candidate tiering (margin, density, lattice/BrCl demotions) |
+| `ladders.py` | Pass 6 anchored homolog/oxidation-ladder gap-fill (diagonal SOA series) |
 | `report.py` | Excel / markdown / sheets |
 | `assign.py` | orchestrator + `PassConfig` + module manifest |
 
 ## Testing & iteration
 
 `for t in chemistry contexts ledger isotopes series_gka io_mascope reagents
-passes residual tiers report series_detect; do python3 tests/test_$t.py; done`
-— 347 offline assertions, no network (io_mascope live smoke gated behind
+passes residual ladders tiers report series_detect; do python3 tests/test_$t.py; done`
+— 358 offline assertions, no network (io_mascope live smoke gated behind
 `MASCOPE_LIVE=1`). Every module has a matching `tests/test_<module>.py`. Add a
 test with each change; keep the suite green. See `README.md` for the dev loop and
 `ROADMAP.md` for the open quality work.
