@@ -36,6 +36,18 @@ check("[Br3]- 79,79,81 isotopologue ~238.7535", bool(near(lib, 238.7535)), near(
 # the cluster library 2026-06-12 -- they are ambient analytes assigned in pass 0)
 check("[Br+H2O]- present ~96.929", bool(near(lib, 96.929)), near(lib, 96.929))
 check("HNO3 NOT in reagent library (now an analyte)", not near(lib, 141.914))
+# di-bromide radical anion Br2-. = 2*78.9183 + e = 157.8372 (user registered it
+# on the server 2026-06-12); the labeler must catch bare even-n clusters too
+check("[Br2]-. present ~157.8372", bool(near(lib, 157.8372)), near(lib, 157.8372))
+# ambient ORGANIC ACIDS were removed from the cluster library: [Br+HCOOH]- =
+# [CH2O2+Br]- = the analyte channel (formic acid's 124.92/126.92 giants), so it
+# must NOT be a reagent label anymore
+check("[Br+HCOOH]- (124.924) NOT in reagent library (it is the [M+Br]- analyte)",
+      not near(lib, 124.924), near(lib, 124.924))
+check("[Br+pinic]- (267.006) NOT in reagent library", not near(lib, 267.006))
+# HBr cluster on the di-bromide core stays reagent (pure halogen, no analyte):
+# [Br2+HBr]- = 157.8372 + 79.926 = 237.763
+check("[Br+HBr]- (HBr2- ~160.843) still reagent", bool(near(lib, 160.843)))
 
 # --- reagent_for_adducts ---
 check("Br reagent from [M+Br]-", RG.reagent_for_adducts(["[M-H]-", "[M+Br]-"]) == "Br")

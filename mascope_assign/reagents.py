@@ -28,24 +28,25 @@ _HALOGEN_ISO = {
 }
 _M_E = C.M_E
 
-# small neutrals that cluster onto the reagent anion (incl. organic acids that
-# commonly form Br_n.acid clusters in Br-CIMS)
+# small neutrals that cluster onto the reagent anion. ONLY genuine reagent /
+# background species belong here -- water and the HBr the reagent itself sheds.
+# Organic acids (HCOOH/CH3COOH/pyruvic/pinic/...) were REMOVED 2026-06-12: a
+# [Br1+acid]- ion IS [acid+Br]- = the primary [M+Br]- ANALYTE channel, so the
+# labeler was stealing real ambient-acid analytes (formic acid's 232k-cps line
+# among them) and burying them as "reagent". They are now left for the
+# assignment passes, exactly like the HNO3/HNO2 ruling.
 _CLUSTER_NEUTRALS = {
-    # HNO3/HNO2 are AMBIENT analytes here (user-confirmed 2026-06-12), assigned
-    # in pass 0, NOT reagent clusters -- removed from this library.
     "H2O": "H2O", "HBr": "HBr",
-    "HCOOH": "CH2O2", "CH3COOH": "C2H4O2", "CO2": "CO2",
-    "SO2": "O2S", "H2SO4": "H2O4S",
-    "propionic": "C3H6O2", "pyruvic": "C3H4O3", "glyoxal": "C2H2O2",
-    "oxalic": "C2H2O4", "MSA": "CH4O3S", "pinic": "C9H14O4",
 }
 
 
-def build_library(reagent: str = "Br", *, max_n: int = 3, max_neutral: int = 1
+def build_library(reagent: str = "Br", *, max_n: int = 4, max_neutral: int = 1
                   ) -> list[tuple[str, float]]:
     """Return [(label, ion_mz)] for negative-mode reagent clusters:
-      * bare R_n^-  (odd n carries the charge: R-, R3-, R5-)
-      * R^- . (neutral)_k  for the small neutral list
+      * bare R_n^-  (odd n = closed-shell anion R-, R3-, R5-; even n = radical
+        anion R2-., R4-. -- e.g. the di-bromide Br2-. the user registered on
+        the server 2026-06-12)
+      * R_n^- . (neutral)_k  for the reagent/background neutral list
     All halogen isotopologue combinations are enumerated.
     """
     if reagent not in _HALOGEN_ISO:
@@ -53,13 +54,17 @@ def build_library(reagent: str = "Br", *, max_n: int = 3, max_neutral: int = 1
     isos = _HALOGEN_ISO[reagent]
     out: list[tuple[str, float]] = []
 
-    # bare R_n clusters (charge -1): odd n carries the charge (R-, R3-, R5-)
+    # bare R_n clusters (charge -1) for n = 1..max_n. Both parities are real
+    # reagent ions in a halide source: odd n are closed-shell (R-, R3-), even n
+    # are radical anions (R2-., R4-.). All are pure reagent -- no analyte atoms
+    # -- so they must be LABELLED, not left red in the residual.
     core_masses: list[tuple[str, float, int]] = []   # (label, mass, n)
-    for n in range(1, max_n * 2, 2):
+    for n in range(1, max_n + 1):
         for combo in itertools.combinations_with_replacement(range(len(isos)), n):
             mass = sum(isos[i][0] for i in combo) + _M_E   # anion: +1 electron
             tag = "+".join(isos[i][1] for i in combo)
-            label = f"[{reagent}{n}]- ({tag})"
+            radical = "." if n % 2 == 0 else ""
+            label = f"[{reagent}{n}]-{radical} ({tag})"
             out.append((label, mass))
             core_masses.append((label, mass, n))
 

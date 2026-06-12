@@ -52,12 +52,16 @@ def run(sample_id: str, context: str = "ambient-air", *,
     raw = io_mascope.fetch_peaks(client, sample_id, use_cache=use_cache)
     led = ledger.new_ledger(raw)
     adducts = io_mascope.detect_adducts(raw)
-    # opportunistic background air-ion channels: if the server has +CO3-
-    # registered, search and SCORE the carbonate channel too (aldehyde adducts
-    # from lingering air ions). Mechanism ids must be passed explicitly --
-    # the server's auto-selection only covers the sample's own channels.
-    extra_channels = (["[M+CO3]-"] if
-                      io_mascope.resolve_mechanism_ids(client, ["+CO3-"]) else [])
+    # opportunistic extra channels, scored only if the server has the mechanism
+    # registered (auto-selection covers only the sample's own channels, so the
+    # ids must be passed explicitly):
+    #   +CO3-  carbonate adducts of aldehydes from lingering air ions
+    #   +Br2-  di-bromide reagent-cluster adducts of analytes -- the n_Br=2
+    #          "C/H lattice" residual is biogenic SOA seen this way (2026-06-12)
+    opportunistic = ["[M+CO3]-", "[M+Br2]-"]
+    extra_channels = [a for a in opportunistic
+                      if io_mascope.resolve_mechanism_ids(
+                          client, [io_mascope.ADDUCT_TO_MECH[a]])]
     mech_names = [io_mascope.ADDUCT_TO_MECH[a]
                   for a in adducts + extra_channels
                   if a in io_mascope.ADDUCT_TO_MECH]

@@ -48,6 +48,16 @@ check("[M+NO3]- shift ~ +61.98818", approx(C.ADDUCT_SHIFTS["[M+NO3]-"], 61.98818
 # [M+H]+ of H2O -> 19.018
 check("[M+H]+ of H2O ~ 19.0178", approx(C.ion_mz("H2O", "[M+H]+"), 19.0178, 1e-3),
       C.ion_mz("H2O", "[M+H]+"))
+# di-bromide analyte cluster frames (2026-06-12). [M+Br2]- = M + 2*78.9183 + e;
+# [M+HBr+Br]- = M + H + 2*Br + e (one H heavier). The SOA core C15H22O3 seen as
+# [M+HBr+Br]- must land on the 409.0015 lattice peak.
+check("[M+Br2]- shift ~ +157.8372",
+      approx(C.ADDUCT_SHIFTS["[M+Br2]-"], 157.8372, 1e-3), C.ADDUCT_SHIFTS["[M+Br2]-"])
+check("[M+HBr+Br]- of C15H22O3 ~ 409.0019 (the lattice peak)",
+      approx(C.ion_mz("C15H22O3", "[M+HBr+Br]-"), 409.0019, 2e-3),
+      C.ion_mz("C15H22O3", "[M+HBr+Br]-"))
+check("[M+HBr+Br]- is one H heavier than [M+Br2]-",
+      approx(C.ADDUCT_SHIFTS["[M+HBr+Br]-"] - C.ADDUCT_SHIFTS["[M+Br2]-"], 1.00783, 1e-4))
 
 # --- DBE on the neutral ---
 check("DBE C10H16O4 == 3", C.dbe("C10H16O4") == 3, C.dbe("C10H16O4"))   # pinonic-ish

@@ -82,6 +82,16 @@ ADDUCT_SHIFTS: dict[str, float] = {
     # bromo-analyte + CO3, decomposed so the reagent Br sits in the cluster
     # (Y.HBr) and the reported neutral Y is bromine-free (user reagent rule).
     "[M+HBr+CO3]-": M["H"] + M["Br"] + M["C"] + 3 * M["O"] + M_E,
+    # di-bromide analyte clusters (the "C/H lattice" peaks, 2026-06-12). The
+    # bright n_Br=2 residual is biogenic SOA (mono-/sesquiterpene oxidation
+    # products + N/S species) detected as reagent di-bromide clusters, NOT
+    # exotic covalent organohalogens:
+    #   [M+Br2]-     M . Br2 radical-anion adduct (server mechanism +Br2-)
+    #   [M+HBr+Br]-  M . HBr . Br-  (the H-bearing cluster most peaks actually
+    #                fit; same ion as covalent Y(Br) [M+Br]-, so _prefer_adduct_
+    #                reading relabels onto it -- needs to be registered here).
+    "[M+Br2]-":    2 * M["Br"] + M_E,
+    "[M+HBr+Br]-": M["H"] + 2 * M["Br"] + M_E,
     # positive mode
     "[M+H]+":   M["H"] - M_E,
     "[M+Na]+":  22.9897692820 - M_E,
