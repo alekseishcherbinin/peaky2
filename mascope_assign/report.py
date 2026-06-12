@@ -89,9 +89,10 @@ def build_sheets(ledger: pd.DataFrame, context: str = "ambient-air") -> dict[str
     iso = led[led["role"] == L.ROLE_ISO][[
         "peak_id", "mz", "height", "parent_peak_id", "iso_label", "iso_match_score"]].copy()
 
-    # unassigned
-    un = led[led["role"] == L.ROLE_UNEXPLAINED][["peak_id", "mz", "height"]].copy()
-    un = un.sort_values("height", ascending=False)
+    # unassigned -- characterized by isotope structure (carbon/halogen count,
+    # iso-partner tier) so the residual is described, not just listed
+    from . import residual as RD
+    un = RD.characterize_residual(led)
 
     # reagent
     reag = led[led["role"] == L.ROLE_REAGENT][["peak_id", "mz", "height", "commentary"]].copy()

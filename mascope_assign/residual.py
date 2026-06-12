@@ -48,6 +48,39 @@ __version__ = "0.2.0"
 # isotope spacings
 D_PAIR_BR = 1.997795
 D_PAIR_CL = 1.997050
+D_13C = 1.0033548
+R_13C = 0.0107   # 13C abundance per carbon
+
+
+def carbon_count_from_13c(ledger: pd.DataFrame, peak_id, *, ppm: float = 6.0):
+    """Measure a peak's carbon count from its 13C satellite, if present in the
+    spectrum. Returns (c_lo, c_hi) bracketing the estimate (+/-1 carbon at high
+    m/z where the satellite straddles two integers), or None when no usable
+    satellite exists. This is the density-killer: a measured carbon count
+    collapses the candidate grid ~5x before any scoring (v17 audit)."""
+    try:
+        i = ledger.index[ledger["peak_id"] == peak_id][0]
+    except IndexError:
+        return None
+    mz0 = float(ledger.at[i, "mz"])
+    h0 = float(ledger.at[i, "height"])
+    if not np.isfinite(h0) or h0 <= 0:
+        return None
+    target = mz0 + D_13C
+    tol = target * ppm * 1e-6
+    d = (ledger["mz"] - target).abs()
+    j = d.idxmin()
+    if d.loc[j] > tol:
+        return None
+    hsat = float(ledger.at[j, "height"])
+    if not np.isfinite(hsat) or hsat <= 0 or hsat >= h0:
+        return None
+    c_est = (hsat / h0) / R_13C
+    # +/-1 carbon tolerance, widened a touch for the Poisson noise on a small
+    # satellite; never let the floor drop below 1
+    lo = max(1, int(np.floor(c_est)) - 1)
+    hi = int(np.ceil(c_est)) + 1
+    return (lo, hi)
 
 
 # ---------------------------------------------------------------------------
@@ -183,20 +216,38 @@ def stage_a_iso_pairs(client, sample_id: str, ledger: pd.DataFrame, profile,
     cmax = min(cmax, 40)
     base_ranges = {"C": (1, cmax), "H": (0, 2 * cmax + 4), "O": (0, 30),
                    "N": (0, profile.max_N), "S": (0, min(1, profile.max_S))}
-    # enumerate per pair, pooled scoring
+    # enumerate per pair, pooled scoring. CARBON CLAMP: when the light peak has
+    # a measured 13C satellite, restrict C to the measured count -- this both
+    # shrinks the grid ~5x and turns "closest fit" into "consistent with the
+    # observed carbon number" (v17 audit: the clamp is what makes the residual
+    # defensibly assignable instead of mass-fit guessing).
     cand_by_formula: dict[str, list] = {}
+    n_clamped = 0
     for _, p in pairs.iterrows():
+        ranges = dict(base_ranges)
+        clamp = carbon_count_from_13c(ledger, p["light_pid"])
+        if clamp is not None:
+            ranges["C"] = clamp
+            n_clamped += 1
         cands = candidates_for_pair(p["light_mz"], p["element"], p["n_halogen"],
-                                    adducts, ranges=base_ranges,
+                                    adducts, ranges=ranges,
                                     ppm=cfg.residual_ppm_pattern)
         for f in cands:
             cand_by_formula.setdefault(f, []).append(p["light_pid"])
     if not cand_by_formula:
         log("[pass4.A] no grid candidates for any pair")
         return out
-    log(f"[pass4.A] {len(cand_by_formula)} candidate formulas (DBE-only filter)")
+    log(f"[pass4.A] {len(cand_by_formula)} candidate formulas "
+        f"(DBE-only filter; {n_clamped}/{len(pairs)} pairs carbon-clamped)")
     scored = score_fn(client, sample_id, sorted(cand_by_formula), mechanism_ids=cfg.mechanism_ids)
     if scored is None or len(scored) == 0:
+        # empty scoring is a SERVER failure (500/timeout swallowed by the
+        # resilient IO layer), NOT "nothing to assign". Make it loud -- a
+        # silent zero-commit pass looks identical to a clean residual (v17).
+        log(f"[pass4.A] WARNING scoring returned EMPTY for "
+            f"{len(cand_by_formula)} candidates -- server likely degraded; "
+            f"residual left UNASSIGNED (not a clean result)")
+        out["scoring_empty"] = True
         return out
     arb = arbitrate(scored, cfg)
     win = arb.get("winners", pd.DataFrame())
@@ -207,7 +258,13 @@ def stage_a_iso_pairs(client, sample_id: str, ledger: pd.DataFrame, profile,
         if pid not in pair_by_light:
             continue   # only commit onto pair light members in this stage
         p = pair_by_light[pid]
-        has_pattern = w["n_iso"] >= 1   # Mascope-confirmed satellite(s)
+        # pattern evidence = Mascope-confirmed satellite OR the OBSERVED doublet
+        # that anchored this peak (the heavy partner sits in the residual,
+        # unmatched, so Mascope's n_iso is 0 -- but we measured the doublet
+        # ourselves; ignoring it forced the strict gate and killed every real
+        # Br-adduct peak, v17). A carbon-clamped fit is also pattern-supported.
+        has_pattern = (w["n_iso"] >= 1 or p["n_halogen"] >= 1
+                       or carbon_count_from_13c(ledger, pid) is not None)
         ok, why = _accept(w["raw_score"], w["ppm_error"], has_pattern, cfg)
         if not ok:
             continue
@@ -301,6 +358,9 @@ def stage_b_series(client, sample_id: str, ledger: pd.DataFrame, profile,
     log(f"[pass4.B] {len(proposals)} deep-series proposals (<= {cfg.residual_max_steps} steps)")
     scored = score_fn(client, sample_id, sorted(proposals), mechanism_ids=cfg.mechanism_ids)
     if scored is None or len(scored) == 0:
+        log(f"[pass4.B] WARNING scoring returned EMPTY for {len(proposals)} "
+            f"proposals -- server likely degraded; residual left UNASSIGNED")
+        out["scoring_empty"] = True
         return out
     arb = arbitrate(scored, cfg)
     for _, w in arb.get("winners", pd.DataFrame()).iterrows():
@@ -346,4 +406,65 @@ def explain_residual(client, sample_id: str, ledger: pd.DataFrame, profile,
                           score_fn=score_fn, log=log)
     b = stage_b_series(client, sample_id, ledger, profile, cfg, adducts,
                        reagent=reagent, score_fn=score_fn, log=log)
-    return {k: a[k] + b[k] for k in a}
+    merged = {}
+    for k in set(a) | set(b):
+        merged[k] = (a.get(k, 0) or 0) + (b.get(k, 0) or 0)
+    return merged
+
+
+def characterize_residual(ledger: pd.DataFrame, *, min_height: float = 0.0) -> pd.DataFrame:
+    """Describe every UNEXPLAINED peak by what the isotope pattern DOES tell us,
+    even when no formula is assignable. This is the honest answer to 'why is
+    this peak unexplained': it records the measured carbon count (13C), the
+    halogen signature (Br/Cl doublet), whether the peak is itself a heavy
+    isotope twin of a lighter residual peak, and a coarse tier. Tiers:
+      - 'iso-partner'    : a 13C/81Br/37Cl satellite of a lighter residual peak
+                           (explained as a satellite; no independent formula)
+      - 'has-constraints': carbon and/or halogen count measured -> a constrained
+                           solve is possible (feeds the Pass-4 clamp)
+      - 'isolated'       : bright, no measurable isotope structure (genuine
+                           single peak; needs orthogonal evidence e.g. time-series)
+    """
+    un = ledger[(ledger["role"] == L.ROLE_UNEXPLAINED)
+                & (ledger["height"].fillna(0) >= min_height)].copy()
+    mzs = ledger["mz"].to_numpy()
+    hs = ledger["height"].to_numpy()
+
+    def near(target, ppm=6.0):
+        tol = target * ppm * 1e-6
+        i = int(np.abs(mzs - target).argmin())
+        return i if abs(mzs[i] - target) <= tol else None
+
+    rows = []
+    for _, r in un.iterrows():
+        mz, h = float(r["mz"]), float(r["height"])
+        clamp = carbon_count_from_13c(ledger, r["peak_id"])
+        # heavy-twin of a lighter residual peak?
+        twin_of = None
+        for d, lab in ((D_13C, "13C"), (D_PAIR_BR, "81Br"), (D_PAIR_CL, "37Cl")):
+            j = near(mz - d)
+            if j is not None and hs[j] > 0 and h < hs[j] * 1.45:
+                twin_of = lab
+                break
+        # halogen doublet to the RIGHT (this peak is the light member)?
+        nbr = ncl = 0
+        jb = near(mz + D_PAIR_BR)
+        if jb is not None and h > 0:
+            rt = hs[jb] / h
+            nbr = 1 if 0.55 <= rt <= 1.45 else (2 if 1.45 < rt <= 2.6 else 0)
+        jc = near(mz + D_PAIR_CL)
+        if jc is not None and h > 0 and nbr == 0:
+            rt = hs[jc] / h
+            ncl = 1 if 0.18 <= rt <= 0.5 else 0
+        if twin_of:
+            tier = "iso-partner"
+        elif clamp or nbr or ncl:
+            tier = "has-constraints"
+        else:
+            tier = "isolated"
+        rows.append({
+            "peak_id": r["peak_id"], "mz": round(mz, 4), "height": int(h),
+            "tier": tier, "twin_of": twin_of,
+            "c_count": None if not clamp else f"{clamp[0]}-{clamp[1]}",
+            "n_Br": nbr, "n_Cl": ncl})
+    return pd.DataFrame(rows).sort_values("height", ascending=False)

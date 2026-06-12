@@ -142,5 +142,32 @@ check("S1 assigned C10H16O5",
 check("S1 commentary cites supporting anchors",
       "supporting anchors" in led3.loc[led3.peak_id == "S1", "commentary"].iloc[0])
 
+# ---------- carbon clamp from 13C satellite ----------
+ccled = L.new_ledger(pd.DataFrame({
+    "peak_id": ["m0", "c13", "lone"],
+    "mz": [300.0000, 300.0000 + 1.0033548, 412.5],
+    "height": [10000.0, 1070.0, 5000.0]}))
+clamp = RD.carbon_count_from_13c(ccled, "m0")
+check("carbon clamp brackets ~C10 from 13C ratio",
+      clamp is not None and clamp[0] <= 10 <= clamp[1], clamp)
+check("carbon clamp None when no satellite present",
+      RD.carbon_count_from_13c(ccled, "lone") is None)
+
+# ---------- residual characterization tiers ----------
+chled = L.new_ledger(pd.DataFrame({
+    "peak_id": ["L", "H", "C", "iso", "alone"],
+    "mz": [400.0000, 400.0 + RD.D_PAIR_BR, 401.0033548,
+           500.0 + RD.D_PAIR_BR, 250.123],
+    "height": [10000.0, 9700.0, 1070.0, 4000.0, 8000.0]}))
+ch = RD.characterize_residual(chled, min_height=100)
+tier = dict(zip(ch["peak_id"], ch["tier"]))
+check("characterize: Br-doublet light member -> has-constraints",
+      tier["L"] == "has-constraints", tier)
+check("characterize: 81Br twin -> iso-partner", tier["H"] == "iso-partner", tier)
+check("characterize: isolated bright peak -> isolated",
+      tier["alone"] == "isolated", tier)
+check("characterize: light member records n_Br=1",
+      int(ch.loc[ch.peak_id == "L", "n_Br"].iloc[0]) == 1)
+
 print(f"\n{PASS} passed, {FAIL} failed")
 sys.exit(1 if FAIL else 0)
