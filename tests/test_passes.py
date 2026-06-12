@@ -482,6 +482,30 @@ check("audit: correct assignment untouched (13C attached, nothing cleared)",
       L.role_of(led, "P") == L.ROLE_M0 and s["c13_clamp"] == 0
       and s["c13_missing"] == 0 and s["c13_attached"] == 1, s)
 
+# ---------- demote_carbon_inconsistent (pre-pass-4 O15-monster clear) ----------
+# the 409.0015 case: pass 1 grabbed C11H10N2O15 (ion C11) but the 13C satellite
+# at +1.0034 measures ~C16 -> must clear BEFORE pass 4 so the di-bromide SOA
+# core (C15) can be re-claimed. Satellite ratio 16*1.07% = 0.171 of the parent.
+led = mk_ledger([("mon", 409.0015, 4720.0), ("sat", 410.0049, 807.0)])
+commit(led, "mon", "C11H10N2O15", "C11H10N2BrO15-")   # ion carbon = 11
+n = P.demote_carbon_inconsistent(led, ACFG, log=lambda *a: None)
+check("pre-pass4: C11 monster with ~C16 satellite demoted",
+      n == 1 and L.role_of(led, "mon") == L.ROLE_UNEXPLAINED, (n, L.role_of(led, "mon")))
+check("pre-pass4: freed peak is re-claimable (unexplained, no formula)",
+      pd.isna(led.loc[led.peak_id == "mon", "neutral_formula"].iloc[0]))
+# a carbon-CONSISTENT assignment is left alone (C15 ion, ~C15 satellite)
+led2 = mk_ledger([("ok", 409.0015, 4720.0), ("s2", 410.0049, 758.0)])
+commit(led2, "ok", "C15H23BrO3", "C15H23Br2O3-")      # ion carbon = 15
+n2 = P.demote_carbon_inconsistent(led2, ACFG, log=lambda *a: None)
+check("pre-pass4: carbon-consistent C15 assignment survives",
+      n2 == 0 and L.role_of(led2, "ok") == L.ROLE_M0, (n2, L.role_of(led2, "ok")))
+# no satellite -> cannot measure -> never demotes (avoids false clears)
+led3 = mk_ledger([("nosat", 409.0015, 4720.0)])
+commit(led3, "nosat", "C11H10N2O15", "C11H10N2BrO15-")
+check("pre-pass4: no satellite -> no demotion",
+      P.demote_carbon_inconsistent(led3, ACFG, log=lambda *a: None) == 0
+      and L.role_of(led3, "nosat") == L.ROLE_M0)
+
 # ---------- audit: twin-satellite fallback for missing 13C ----------
 # v20 false-clear: C3H6O3.Br- at 10.3k cps -- own 13C absent from the peak
 # list, but the 81Br twin's 13C satellite exists and proves the carbon.

@@ -700,6 +700,53 @@ def _peak_near(mzs: "pd.Series", target: float, ppm: float = 5.0):
     return i if d.loc[i] <= tol else None
 
 
+def demote_carbon_inconsistent(ledger: pd.DataFrame, cfg: PassConfig, *,
+                               log=print) -> int:
+    """Clear committed M0s whose carbon count is contradicted by their 13C
+    satellite -- the 'O15 monster' class. Run BEFORE pass 4 (not just in the
+    end-of-run audit) so the freed bright peaks are re-offered the correct
+    carbon-clamped interpretation. Without this, pass 1 grabs a lattice peak
+    with a low-carbon CHON mass-fit (e.g. C11H10N2O15 on the 4.7k-cps 409.0015,
+    whose 13C satellite measures ~C16), pass 4 skips it because it is no longer
+    unexplained, and the audit only clears it after every pass has run -- too
+    late to re-assign as the di-bromide SOA cluster (C15H22O3 [M+HBr+Br]-)."""
+    mzs = ledger["mz"]
+    n = 0
+    for _, r in ledger[(ledger["role"] == L.ROLE_M0)
+                       & ~ledger["locked"].astype(bool)].iterrows():
+        n_c = C.parse_formula(str(r["ion_formula"])).get("C", 0)
+        if n_c < 8:
+            continue
+        # measure carbon from a committed 13C child, else an unclaimed satellite
+        k = ledger[(ledger["role"] == L.ROLE_ISO)
+                   & (ledger["parent_peak_id"] == r["peak_id"])
+                   & (ledger["iso_label"].astype(str) == "13C")]
+        if len(k):
+            h_sat = float(k.iloc[0]["height"])
+        else:
+            j = _peak_near(mzs, float(r["mz"]) + _D13C)
+            if j is None or ledger.at[j, "role"] != L.ROLE_UNEXPLAINED:
+                continue
+            h_sat = float(ledger.at[j, "height"])
+        h0 = float(r["height"])
+        if not (h0 > 0 and h_sat > 0):
+            continue
+        c_est = (h_sat / h0) / _R13C
+        if abs(c_est - n_c) > max(2.5, 0.35 * n_c):
+            try:
+                L.clear_assignment(
+                    ledger, r["peak_id"],
+                    reason=f"carbon-clamp (pre-pass-4): 13C ratio measures ~C"
+                           f"{c_est:.0f}, formula claims C{n_c}")
+                n += 1
+            except L.LedgerError:
+                continue
+    if n:
+        log(f"[pre-pass4] carbon-clamp demoted {n} C-inconsistent M0 monsters "
+            f"-> re-offered to the residual passes")
+    return n
+
+
 def audit_isotopes(ledger: pd.DataFrame, cfg: PassConfig, *, log=print) -> dict:
     """Post-run isotope-physics audit. Validates committed M0s against what
     the isotope pattern REQUIRES, independent of match scores (v16 audit):

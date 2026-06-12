@@ -119,6 +119,13 @@ def run(sample_id: str, context: str = "ambient-air", *,
         summaries["pass3"] = _safe("pass3", lambda: passes.run_pass3(
             client, sample_id, led, profile, pre, cfg, adducts, log=log))
     if do_pass4:
+        # free the bright lattice peaks that pass 1 grabbed with low-carbon
+        # CHON mass-fits (O15 monsters): their 13C satellite contradicts the
+        # formula's carbon count, so clear them HERE -- pass 4's carbon-clamped
+        # iso-pair enumeration then re-claims them as di-bromide SOA clusters.
+        summaries["carbon_clamp_pre4"] = _safe(
+            "carbon_clamp_pre4",
+            lambda: passes.demote_carbon_inconsistent(led, cfg, log=log))
         summaries["pass4"] = _safe("pass4", lambda: residual.explain_residual(
             client, sample_id, led, profile, pre, cfg, adducts,
             reagent=reagent, log=log))
