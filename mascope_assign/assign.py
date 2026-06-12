@@ -59,7 +59,12 @@ def run(sample_id: str, context: str = "ambient-air", *,
     #   +CO3-  carbonate adducts of aldehydes from lingering air ions
     #   +Br2-  di-bromide reagent-cluster adducts of analytes -- the n_Br=2
     #          "C/H lattice" residual is biogenic SOA seen this way (2026-06-12)
-    opportunistic = ["[M+CO3]-", "[M+Br2]-", "[M+Br3]-"]
+    # NB: +Br3- is intentionally NOT a blanket scoring channel -- adding it lost
+    # 40 base M0s (incl. TFA) for 0 gains (heavier per-formula scoring times out
+    # batches; Br3- is the dominant reagent ion). The di-bromide work runs via
+    # the [M+HBr+Br]- relabel (scored as covalent-equiv [M-H]-) + the pass-6
+    # ladder, neither of which needs a bare-cluster scoring channel.
+    opportunistic = ["[M+CO3]-", "[M+Br2]-"]
     extra_channels = [a for a in opportunistic
                       if io_mascope.resolve_mechanism_ids(
                           client, [io_mascope.ADDUCT_TO_MECH[a]])]
