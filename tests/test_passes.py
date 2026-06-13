@@ -482,6 +482,40 @@ check("audit: correct assignment untouched (13C attached, nothing cleared)",
       L.role_of(led, "P") == L.ROLE_M0 and s["c13_clamp"] == 0
       and s["c13_missing"] == 0 and s["c13_attached"] == 1, s)
 
+# ---------- complete_isotope_envelopes (the 393/395 silanediol bug) ----------
+from mascope_assign import chemistry as CHEM  # noqa: E402
+# silanediol Si4+Br at 393 (M0), its M+2 at 395 wrongly committed as a Cl-F-S
+# organic, M+4 at 397 attached as 395's child. Heights = real Si4+Br envelope.
+led = mk_ledger([("Si", 393.0045, 20086.0), ("Mp2", 395.0028, 24523.0),
+                 ("Mp4", 397.0029, 6344.0), ("far", 600.0, 5000.0)])
+commit(led, "Si", "C8H26O5Si4", "C8H26BrO5Si4-")        # the silanediol M0
+L.lock_peaks(led, ["Si"])                                 # pass-0 locks it
+L.commit_assignment(led, "Mp2", neutral_formula="C8H12ClF6NO2S", adduct="[M+CO3]-",
+                    ion_formula="C9H12ClF6NO5S-", ion_score=0.63, ppm_error=-1.6,
+                    pass_no=4, method="residual:iso-pair", confidence="Low (iso-pair)",
+                    commentary="phantom Cl doublet")
+L.attach_isotopologue(led, "Mp4", "Mp2", iso_label="37Cl(pair)")
+import mascope_assign.tiers as _T  # noqa: E402
+_T.apply_tiers(led)
+out = P.complete_isotope_envelopes(led, P.PassConfig(), log=lambda *a: None)
+check("envelope: silanediol M+2 (395) displaced off its phantom formula",
+      L.role_of(led, "Mp2") == L.ROLE_ISO and out["displaced"] >= 1, out)
+check("envelope: 395 re-parented to the silanediol 393",
+      led.loc[led.peak_id == "Mp2", "parent_peak_id"].iloc[0] == "Si")
+check("envelope: 397 (M+4) re-parented to the silanediol too",
+      led.loc[led.peak_id == "Mp4", "parent_peak_id"].iloc[0] == "Si")
+check("envelope: ledger still valid after displacement", L.validate(led) == [], L.validate(led))
+
+# guard: a CHO-only M0 must NOT claim a coincidental peak ~2 Da above it (its
+# pattern has no M+2 driver), and must NOT displace a real neighbour
+led2 = mk_ledger([("a", 200.0, 1e5), ("b", 202.0, 5e4)])
+commit(led2, "a", "C10H16O4", "C10H15O4-")   # CHO ion, no Br/Cl/Si
+commit(led2, "b", "C9H12O5", "C9H11O5-")      # independent neighbour
+_T.apply_tiers(led2)
+out2 = P.complete_isotope_envelopes(led2, P.PassConfig(), log=lambda *a: None)
+check("envelope: CHO ion does not claim a coincidental +2 neighbour",
+      L.role_of(led2, "b") == L.ROLE_M0 and out2["displaced"] == 0, out2)
+
 # ---------- demote_carbon_inconsistent (pre-pass-4 O15-monster clear) ----------
 # the 409.0015 case: pass 1 grabbed C11H10N2O15 (ion C11) but the 13C satellite
 # at +1.0034 measures ~C16 -> must clear BEFORE pass 4 so the di-bromide SOA

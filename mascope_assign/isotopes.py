@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 
 import pandas as pd
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 # delta-m (Da) between an isotopologue satellite and its monoisotopic parent
 D_13C = 1.003355
@@ -35,6 +35,104 @@ R_37CL_PER_CL = 0.3196        # 37Cl/35Cl
 R_81BR_PER_BR = 0.9728        # 81Br/79Br
 R_34S_PER_S = 0.0443          # 34S/32S
 R_29SI_PER_SI = 0.0510        # 29Si/28Si
+
+
+# Per-atom isotope distributions: element -> [(mass_shift_from_lightest, abundance)].
+# Only isotopes that move the M+1/M+2/... envelope are listed (2H, 17O kept tiny).
+# Masses are heavy-minus-light exact deltas; abundances are natural fractions.
+_ISO_DIST: dict[str, list[tuple[float, float]]] = {
+    "C":  [(0.0, 0.98930), (1.003355, 0.01070)],
+    "H":  [(0.0, 0.999885), (1.006277, 0.000115)],
+    "N":  [(0.0, 0.996360), (0.997035, 0.003640)],
+    "O":  [(0.0, 0.997570), (1.004217, 0.000380), (2.004246, 0.002050)],
+    "S":  [(0.0, 0.949900), (0.999388, 0.007500), (1.995796, 0.042500)],
+    "Cl": [(0.0, 0.757600), (1.997050, 0.242400)],
+    "Br": [(0.0, 0.506900), (1.997795, 0.493100)],
+    "Si": [(0.0, 0.922230), (0.999568, 0.046850), (1.996840, 0.030920)],
+}
+_HEAVY_ELEMENTS = ("Br", "Cl", "Si", "S")   # the M+2 drivers
+
+
+def _label_for_shift(dmass: float) -> str:
+    """Name the dominant isotopologue at a given mass shift (for ledger labels)."""
+    table = [(1.003355, "13C"), (1.997795, "81Br"), (1.997050, "37Cl"),
+             (1.996840, "30Si"), (1.995796, "34S"), (0.999568, "29Si"),
+             (2.004246, "18O"), (2.006710, "13C2"), (2.997363, "81Br+29Si"),
+             (3.001150, "81Br+13C"), (3.994635, "81Br+30Si"), (3.995590, "81Br2/2x37Cl"),
+             (3.993680, "2x30Si")]
+    best = min(table, key=lambda t: abs(t[0] - dmass))
+    return best[1] if abs(best[0] - dmass) <= 0.01 else f"M+{round(dmass)}"
+
+
+def isotope_pattern(ion_formula: str, *, min_rel: float = 0.03,
+                    max_shift: float = 6.5, merge_da: float = 0.006
+                    ) -> list[tuple[float, float, str]]:
+    """Predict the isotopologue envelope of an ION formula.
+
+    Returns [(delta_mass, rel_intensity, label), ...] for every resolved line
+    ABOVE min_rel relative to the monoisotopic (M0) line, sorted by mass shift.
+    The pattern is the convolution of each element's per-atom distribution; lines
+    within ~3 mDa are merged keeping the intensity-weighted exact mass. This is
+    what lets the envelope-completion pass recognise an unexplained peak as the
+    M+2/M+4 satellite of a committed parent (the silanediol Si4+Br case, where
+    the M+4/M+2 ratio of ~0.26 otherwise mimics a Cl doublet)."""
+    from . import chemistry as C
+    counts = C.parse_formula(ion_formula)
+    # distribution as {rounded_shift: [prob, weighted_mass_sum]}
+    dist: dict[int, list[float]] = {0: [1.0, 0.0]}
+    PRUNE = min_rel * 0.05
+    for el, n in counts.items():
+        per = _ISO_DIST.get(el)
+        if per is None or n <= 0:
+            continue
+        for _ in range(n):
+            nxt: dict[int, list[float]] = {}
+            for k, (p, wm) in dist.items():
+                base_m = wm / p if p else 0.0
+                for dm, ab in per:
+                    if ab <= 0:
+                        continue
+                    np_ = p * ab
+                    if np_ < PRUNE:
+                        continue
+                    newm = base_m + dm
+                    key = int(round(newm * 1000))
+                    slot = nxt.setdefault(key, [0.0, 0.0])
+                    slot[0] += np_
+                    slot[1] += np_ * newm
+            # renormalise pruning loss negligibly; keep top lines only
+            dist = nxt
+    m0 = dist.get(0)
+    if not m0 or m0[0] <= 0:
+        # monoisotopic not the lightest key (rounding); take the smallest shift
+        k0 = min(dist)
+        m0 = dist[k0]
+    base = m0[0]
+    # raw lines (mass, prob) above a loose floor, sorted by mass
+    raw = []
+    for k, (p, wm) in sorted(dist.items()):
+        if k <= 0:
+            continue
+        dmass = wm / p
+        if dmass <= 0.4 or dmass > max_shift:
+            continue
+        raw.append([dmass, p])
+    # merge lines closer than merge_da -- the peak picker resolves them as ONE
+    # peak, so their intensities add (e.g. 81Br at +1.9978 + 30Si at +1.9968).
+    merged: list[list[float]] = []
+    for dmass, p in raw:
+        if merged and dmass - (merged[-1][1] / merged[-1][0]) < merge_da:
+            merged[-1][0] += p
+            merged[-1][1] += p * dmass
+        else:
+            merged.append([p, p * dmass])
+    out = []
+    for p, wm in merged:
+        dmass = wm / p
+        rel = p / base
+        if rel >= min_rel:
+            out.append((round(dmass, 4), round(rel, 4), _label_for_shift(dmass)))
+    return sorted(out)
 
 
 @dataclass

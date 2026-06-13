@@ -25,10 +25,11 @@ import pandas as pd
 from . import chemistry as C
 from . import contexts as X
 from . import io_mascope as IO
+from . import isotopes as ISO
 from . import ledger as L
 from . import series_gka as G
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 
 @dataclass
@@ -698,6 +699,94 @@ def _peak_near(mzs: "pd.Series", target: float, ppm: float = 5.0):
     d = (mzs - target).abs()
     i = d.idxmin()
     return i if d.loc[i] <= tol else None
+
+
+def complete_isotope_envelopes(ledger: pd.DataFrame, cfg: PassConfig, *,
+                               min_rel: float = 0.06, ppm: float = 6.0,
+                               log=print) -> dict:
+    """Claim the FULL predicted isotope envelope (M+1/M+2/M+4...) of every
+    committed M0, so multi-isotope species (Si-rich silanediols, multi-Br/Cl
+    compounds) don't leak satellites into the residual.
+
+    Two actions per predicted satellite line:
+      * an UNEXPLAINED peak at the right mass + consistent intensity is attached
+        as an iso_child (the envelope was incompletely claimed by the server);
+      * a WEAK committed M0 (not High/Identified, not locked) that is really a
+        parent's satellite is DISPLACED into the iso_child role -- this is the
+        393/395 silanediol bug, where the Si4+Br M+2 at 395 got mis-assigned a
+        Cl-F-S formula because its M+4/M+2 ratio (~0.26) mimicked a Cl doublet.
+
+    Processed parent-before-satellite (ascending m/z): a satellite is always
+    heavier than its parent, so the true parent claims it first. The pattern is
+    formula-specific (a CHO-only ion predicts only 13C, never an M+2), and an
+    intensity-consistency gate is the discriminator against coincidental
+    neighbours -- a real M+2 satellite sits at the predicted height, an
+    independent compound does not."""
+    out = {"attached": 0, "displaced": 0}
+    mzs = ledger["mz"]
+    order = (ledger[ledger["role"] == L.ROLE_M0]
+             .sort_values("mz")["peak_id"].tolist())
+    for pid in order:
+        idx = ledger.index[ledger["peak_id"] == pid]
+        if not len(idx):
+            continue
+        i = idx[0]
+        if str(ledger.at[i, "role"]) != L.ROLE_M0:
+            continue                       # displaced by an earlier parent
+        ionf = ledger.at[i, "ion_formula"]
+        if ionf is pd.NA or pd.isna(ionf) or not str(ionf).strip():
+            continue
+        pmz = float(ledger.at[i, "mz"])
+        ph = float(ledger.at[i, "height"])
+        if not (ph > 0):
+            continue
+        try:
+            pattern = ISO.isotope_pattern(str(ionf), min_rel=min_rel)
+        except Exception:
+            continue
+        for dmass, rel, label in pattern:
+            j = _peak_near(mzs, pmz + dmass, ppm=ppm)
+            if j is None:
+                continue
+            tpid = ledger.at[j, "peak_id"]
+            if tpid == pid:
+                continue
+            th = float(ledger.at[j, "height"])
+            if not (th > 0):
+                continue
+            ratio = th / (ph * rel)
+            score = min(ratio, 1.0 / ratio) if ratio > 0 else 0.0
+            role_j = str(ledger.at[j, "role"])
+            if role_j == L.ROLE_UNEXPLAINED:
+                if 0.3 <= ratio <= 3.5:
+                    try:
+                        L.attach_isotopologue(ledger, tpid, pid, iso_label=label,
+                                              iso_match_score=score)
+                        out["attached"] += 1
+                    except L.LedgerError:
+                        pass
+            elif role_j == L.ROLE_M0:
+                if bool(ledger.at[j, "locked"]):
+                    continue
+                conf_j = str(ledger.at[j, "confidence"])
+                tier_j = (str(ledger.at[j, "tier"])
+                          if "tier" in ledger.columns else "")
+                # only displace a WEAK victim, and only on a tight intensity
+                # match (a real satellite sits at the predicted height)
+                if (not conf_j.startswith("High") and tier_j != "Identified"
+                        and 0.45 <= ratio <= 2.2):
+                    try:
+                        L.displace_to_isotopologue(ledger, tpid, pid,
+                                                   iso_label=label,
+                                                   iso_match_score=score)
+                        out["displaced"] += 1
+                    except L.LedgerError:
+                        pass
+    if out["attached"] or out["displaced"]:
+        log(f"[iso-envelope] attached {out['attached']} unclaimed satellites, "
+            f"displaced {out['displaced']} mis-assigned satellites onto their "
+            f"true parents")
+    return out
 
 
 def demote_carbon_inconsistent(ledger: pd.DataFrame, cfg: PassConfig, *,

@@ -77,5 +77,36 @@ caps_nobr = {"S": 1, "Br": 0, "Cl": 0, "Si": 0}
 c2 = ISO.constrain_ranges(base, r, caps_nobr)
 check("context Br cap 0 -> Br zeroed despite evidence", c2["Br"] == (0, 0), c2["Br"])
 
+# --- isotope_pattern: predict the envelope of an ion formula ---
+def line(pat, dm, tol=0.01):
+    for d, rel, lab in pat:
+        if abs(d - dm) <= tol:
+            return (rel, lab)
+    return None
+
+# 1 Br: M+2 ~0.97, plus 13C; no M+4
+p = ISO.isotope_pattern("C15H23BrO3", min_rel=0.05)
+check("1-Br has M+2 (81Br) ~0.97", line(p, 1.9978) and abs(line(p, 1.9978)[0] - 0.97) < 0.1,
+      line(p, 1.9978))
+check("1-Br M+2 labelled 81Br", line(p, 1.9978) and line(p, 1.9978)[1] == "81Br")
+check("1-Br has 13C M+1", line(p, 1.0034) is not None)
+
+# 2 Br: M+2 ~1.95, M+4 ~0.95
+p2 = ISO.isotope_pattern("C15H23Br2O3", min_rel=0.05)
+check("2-Br M+2 ~1.95", line(p2, 1.9978) and abs(line(p2, 1.9978)[0] - 1.95) < 0.2, line(p2, 1.9978))
+check("2-Br has M+4 ~0.95", line(p2, 3.9956) and abs(line(p2, 3.9956)[0] - 0.95) < 0.2, line(p2, 3.9956))
+
+# silanediol Si4+Br: merged M+2 ~1.1 (81Br + 30Si), and an M+4
+ps = ISO.isotope_pattern("C8H26BrO5Si4", min_rel=0.05)
+check("silanediol merged M+2 ~1.1 (Br+Si)", line(ps, 1.9978) and 0.95 <= line(ps, 1.9978)[0] <= 1.3,
+      line(ps, 1.9978))
+check("silanediol has an M+4 line", line(ps, 3.9946) is not None, ps)
+
+# CHO-only ion: NO M+2 driver -> only 13C lines, so it can never claim a +2 neighbour
+pc = ISO.isotope_pattern("C10H15O4", min_rel=0.03)
+check("CHO-only has no M+2 (Br/Cl/Si) line",
+      line(pc, 1.9978, tol=0.004) is None and line(pc, 1.997, tol=0.004) is None, pc)
+check("CHO-only does have 13C", line(pc, 1.0034) is not None)
+
 print(f"\n{PASS} passed, {FAIL} failed")
 sys.exit(1 if FAIL else 0)

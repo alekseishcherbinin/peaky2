@@ -125,6 +125,14 @@ def run(sample_id: str, context: str = "ambient-air", *,
         summaries["pass3"] = _safe("pass3", lambda: passes.run_pass3(
             client, sample_id, led, profile, pre, cfg, adducts, log=log))
     if do_pass4:
+        # claim the full isotope envelope (M+2/M+4 incl. Si/Br/Cl combos) of
+        # every committed peak BEFORE pass 4, so multi-isotope satellites (the
+        # silanediol Si4+Br M+2 at 395) are attached to their parents instead of
+        # being mis-assigned by pass 4's iso-pair stage (a Si4+Br M+4/M+2 ratio
+        # of ~0.26 otherwise reads as a phantom Cl doublet).
+        summaries["iso_env_pre4"] = _safe(
+            "iso_env_pre4",
+            lambda: passes.complete_isotope_envelopes(led, cfg, log=log))
         # free the bright lattice peaks that pass 1 grabbed with low-carbon
         # CHON mass-fits (O15 monsters): their 13C satellite contradicts the
         # formula's carbon count, so clear them HERE -- pass 4's carbon-clamped
@@ -145,6 +153,11 @@ def run(sample_id: str, context: str = "ambient-air", *,
     # (pass 1 Lows) and anything that slipped through with no mass evidence
     summaries["audit_iso"] = passes.audit_isotopes(led, cfg, log=log)
     summaries["audit"] = passes.audit_mass_gate(led, cfg, log=log)
+    # second envelope sweep: displace any satellite that a later pass still
+    # mis-assigned, and attach satellites of the pass-4/5 commits
+    summaries["iso_env_post"] = _safe(
+        "iso_env_post",
+        lambda: passes.complete_isotope_envelopes(led, cfg, log=log))
     _checkpoint("audit")
 
     # final reagent sweep: catch any cluster peaks the passes left unexplained
