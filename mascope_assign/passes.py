@@ -718,10 +718,12 @@ def complete_isotope_envelopes(ledger: pd.DataFrame, cfg: PassConfig, *,
 
     Processed parent-before-satellite (ascending m/z): a satellite is always
     heavier than its parent, so the true parent claims it first. The pattern is
-    formula-specific (a CHO-only ion predicts only 13C, never an M+2), and an
-    intensity-consistency gate is the discriminator against coincidental
-    neighbours -- a real M+2 satellite sits at the predicted height, an
-    independent compound does not."""
+    formula-specific (a CHO ion predicts only 13C, plus a 13C2 M+2 above ~28 C;
+    halogen/Si M+2 lines need the actual heteroatom), and an intensity-
+    consistency gate is the discriminator against coincidental neighbours -- a
+    real satellite sits at the predicted height, an independent compound does
+    not. The match tolerance is tight for M+1/M+2 (to separate 13C from 29Si,
+    3.8 mDa apart) and looser for the multi-isotope M+4+ centroid."""
     out = {"attached": 0, "displaced": 0}
     mzs = ledger["mz"]
     order = (ledger[ledger["role"] == L.ROLE_M0]
@@ -741,11 +743,17 @@ def complete_isotope_envelopes(ledger: pd.DataFrame, cfg: PassConfig, *,
         if not (ph > 0):
             continue
         try:
-            pattern = ISO.isotope_pattern(str(ionf), min_rel=min_rel)
+            # max_shift 12: keep the M+7/M+8 envelope of 4+ heavy-halogen ions
+            # (a Br4 M+8 is ~0.9x M0) instead of leaking it into the residual
+            pattern = ISO.isotope_pattern(str(ionf), min_rel=min_rel, max_shift=12.0)
         except Exception:
             continue
         for dmass, rel, label in pattern:
-            j = _peak_near(mzs, pmz + dmass, ppm=ppm)
+            # tolerance is shift-aware: M+1/M+2 must separate 13C (+1.0034) from
+            # 29Si (+0.9996) -- 3.8 mDa apart -- so they use a tight window; the
+            # multi-isotope M+4+ centroid is approximate and uses the loose one
+            line_ppm = 5.0 if dmass < 2.5 else ppm
+            j = _peak_near(mzs, pmz + dmass, ppm=line_ppm)
             if j is None:
                 continue
             tpid = ledger.at[j, "peak_id"]
@@ -769,11 +777,13 @@ def complete_isotope_envelopes(ledger: pd.DataFrame, cfg: PassConfig, *,
                 if bool(ledger.at[j, "locked"]):
                     continue
                 conf_j = str(ledger.at[j, "confidence"])
-                tier_j = (str(ledger.at[j, "tier"])
-                          if "tier" in ledger.columns else "")
-                # only displace a WEAK victim, and only on a tight intensity
-                # match (a real satellite sits at the predicted height)
-                if (not conf_j.startswith("High") and tier_j != "Identified"
+                sc_j = ledger.at[j, "ion_score"]
+                weak_score = pd.isna(sc_j) or float(sc_j) < cfg.tau_high
+                # only displace a WEAK victim, on a tight intensity match. The
+                # tier column is NA here (tiers run later), so protect on
+                # CONFIDENCE + standalone SCORE instead: High-confidence or
+                # near-High-scoring fits are real compounds, not satellites.
+                if (not conf_j.startswith("High") and weak_score
                         and 0.45 <= ratio <= 2.2):
                     try:
                         L.displace_to_isotopologue(ledger, tpid, pid,

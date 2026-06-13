@@ -108,5 +108,21 @@ check("CHO-only has no M+2 (Br/Cl/Si) line",
       line(pc, 1.9978, tol=0.004) is None and line(pc, 1.997, tol=0.004) is None, pc)
 check("CHO-only does have 13C", line(pc, 1.0034) is not None)
 
+# --- 81Br mass constant is the true AME2020 value, consistent across modules ---
+check("D_81BR is the true 81Br-79Br delta (1.99795, not 1.99780)",
+      abs(ISO.D_81BR - 1.9979521) < 1e-6, ISO.D_81BR)
+import mascope_assign.passes as _P  # noqa: E402
+check("isotopes D_81BR ~ passes._DBR (same physical line)",
+      abs(ISO.D_81BR - _P._DBR) < 5e-4, (ISO.D_81BR, _P._DBR))
+check("2x81Br label mass is 2*81Br (no rounding drift)",
+      any(lab == "2x81Br" and abs(m - 2 * ISO.D_81BR) < 1e-4
+          for m, lab, _ in ISO._LABEL_TABLE),
+      [(m, lab) for m, lab, _ in ISO._LABEL_TABLE if "81Br" in lab])
+
+# --- max_shift large enough that a 4-halogen M+8 is not truncated ---
+p4 = ISO.isotope_pattern("CBr4", min_rel=0.05, max_shift=12.0)
+check("CBr4 keeps its M+8 (~8 Da) line under max_shift=12",
+      max(d for d, _, _ in p4) > 7.5, max(d for d, _, _ in p4))
+
 print(f"\n{PASS} passed, {FAIL} failed")
 sys.exit(1 if FAIL else 0)

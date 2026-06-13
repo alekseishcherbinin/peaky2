@@ -516,6 +516,19 @@ out2 = P.complete_isotope_envelopes(led2, P.PassConfig(), log=lambda *a: None)
 check("envelope: CHO ion does not claim a coincidental +2 neighbour",
       L.role_of(led2, "b") == L.ROLE_M0 and out2["displaced"] == 0, out2)
 
+# guard (review #3): a STRONG victim (High conf OR near-High score) sitting at a
+# parent's M+2 with matching intensity must NOT be displaced -- the tier column
+# is NA during this pass, so protection rides on confidence + score, not tier.
+led3 = mk_ledger([("p", 300.0, 1e5), ("q", 301.9979, 9.7e4)])
+commit(led3, "p", "C9H17BrO5", "C9H17BrO5-")          # 1-Br parent, predicts M+2
+L.commit_assignment(led3, "q", neutral_formula="C12H20O8", adduct="[M-H]-",
+                    ion_formula="C12H19O8-", ion_score=0.95, ppm_error=0.2,
+                    pass_no=1, method="cheminfo+grid", confidence="High",
+                    commentary="strong standalone fit")
+outg = P.complete_isotope_envelopes(led3, P.PassConfig(), log=lambda *a: None)
+check("envelope: a High/strong-score victim is NOT displaced (tier-NA safe)",
+      L.role_of(led3, "q") == L.ROLE_M0 and outg["displaced"] == 0, outg)
+
 # ---------- demote_carbon_inconsistent (pre-pass-4 O15-monster clear) ----------
 # the 409.0015 case: pass 1 grabbed C11H10N2O15 (ion C11) but the 13C satellite
 # at +1.0034 measures ~C16 -> must clear BEFORE pass 4 so the di-bromide SOA
