@@ -142,7 +142,7 @@ already open. `run_assignment.py` emits one per run.
 
 `for t in chemistry contexts ledger isotopes series_gka io_mascope reagents
 passes residual ladders tiers report series_detect; do python3 tests/test_$t.py; done`
-— 390 offline assertions, no network (io_mascope live smoke gated behind
+— 407 offline assertions, no network (io_mascope live smoke gated behind
 `MASCOPE_LIVE=1`). Every module has a matching `tests/test_<module>.py`. Add a
 test with each change; keep the suite green. See `README.md` for the dev loop and
 `ROADMAP.md` for the open quality work.
