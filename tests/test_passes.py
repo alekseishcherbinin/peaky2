@@ -529,6 +529,34 @@ outg = P.complete_isotope_envelopes(led3, P.PassConfig(), log=lambda *a: None)
 check("envelope: a High/strong-score victim is NOT displaced (tier-NA safe)",
       L.role_of(led3, "q") == L.ROLE_M0 and outg["displaced"] == 0, outg)
 
+# ---------- detect_composites (silanediol-on-BrCl even/odd test) ----------
+# build a silanediol n=4 envelope: M0 inflated ~45% by a coincident BrCl
+# compound. Odd shifts (M+1) = pure silanediol; even (M0/M+2/M+4) carry the
+# extra halogen. Heights from the real <sample-id> data.
+import mascope_assign.chemistry as _CH  # noqa: E402
+mz0 = _CH.ion_mz("C8H26O5Si4", "[M+Br]-")   # 393.0046
+comp = mk_ledger([("M0", mz0, 20086.0), ("M1", mz0 + 1.0008, 2698.0),
+                  ("M1b", mz0 + 1.0034, 531.0), ("M2", mz0 + 1.9979, 24523.0),
+                  ("M3", mz0 + 2.9986, 2748.0), ("M4", mz0 + 3.9957, 6344.0),
+                  ("clean", 244.9670, 10712.0), ("cleanM1", 244.9670 + 1.0, 1461.0),
+                  ("cleanM2", 244.9670 + 1.9979, 7000.0)])
+commit(comp, "M0", "C8H26O5Si4", "C8H26BrO5Si4-")
+commit(comp, "clean", "C4H14O3Si2", "C4H14BrO3Si2-")   # n=2: ~clean, small extra
+oc = P.detect_composites(comp, P.PassConfig(), log=lambda *a: None)
+note4 = comp.loc[comp.peak_id == "M0", "composite_note"].iloc[0]
+check("composite: silanediol n=4 flagged as composite", pd.notna(note4) and oc["flagged"] >= 1, note4)
+check("composite: identifies the BrCl co-component", "BrCl" in str(note4), note4)
+check("composite: estimates ~45% co-component", "45%" in str(note4) or "44%" in str(note4), note4)
+check("composite: clean n=2 NOT flagged",
+      pd.isna(comp.loc[comp.peak_id == "clean", "composite_note"].iloc[0]),
+      comp.loc[comp.peak_id == "clean", "composite_note"].iloc[0])
+# a CHO compound whose M0 matches its M+1 is NOT flagged (no inflation)
+pure = mk_ledger([("p", 200.0, 1e5), ("pm1", 201.0034, 1e5 * 10 * 0.0107)])
+commit(pure, "p", "C10H16O4", "C10H15O4-")
+P.detect_composites(pure, P.PassConfig(), log=lambda *a: None)
+check("composite: a self-consistent CHO M0 is NOT flagged",
+      pd.isna(pure.loc[pure.peak_id == "p", "composite_note"].iloc[0]))
+
 # ---------- demote_carbon_inconsistent (pre-pass-4 O15-monster clear) ----------
 # the 409.0015 case: pass 1 grabbed C11H10N2O15 (ion C11) but the 13C satellite
 # at +1.0034 measures ~C16 -> must clear BEFORE pass 4 so the di-bromide SOA

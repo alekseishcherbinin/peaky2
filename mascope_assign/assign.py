@@ -158,6 +158,12 @@ def run(sample_id: str, context: str = "ambient-air", *,
     summaries["iso_env_post"] = _safe(
         "iso_env_post",
         lambda: passes.complete_isotope_envelopes(led, cfg, log=log))
+    # composite detection: flag M0s whose even-shift peaks (M0/M+2) are inflated
+    # beyond what their halogen-free M+1 satellite implies -> an unresolved
+    # co-eluting compound shares the m/z (the silanediol n>=3 rungs sit on a
+    # coincident BrCl/Br compound; formula + prediction are both correct)
+    summaries["composite"] = _safe(
+        "composite", lambda: passes.detect_composites(led, cfg, log=log))
     _checkpoint("audit")
 
     # final reagent sweep: catch any cluster peaks the passes left unexplained

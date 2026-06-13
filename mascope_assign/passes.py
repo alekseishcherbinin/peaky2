@@ -29,7 +29,7 @@ from . import isotopes as ISO
 from . import ledger as L
 from . import series_gka as G
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 
 @dataclass
@@ -796,6 +796,96 @@ def complete_isotope_envelopes(ledger: pd.DataFrame, cfg: PassConfig, *,
         log(f"[iso-envelope] attached {out['attached']} unclaimed satellites, "
             f"displaced {out['displaced']} mis-assigned satellites onto their "
             f"true parents")
+    return out
+
+
+# per-atom +1 (M+1) satellite abundance ratios -- all halogen-FREE, so the
+# observed M+1 is dominated by the assigned compound even under a coincident
+# halogen interferent (whose M+1 is weak); this is the composite discriminator
+_M1_RATIO = {"C": 0.0107, "Si": 0.0508, "N": 0.003653, "S": 0.007896,
+             "O": 0.000381, "H": 0.000115}
+
+
+def detect_composites(ledger: pd.DataFrame, cfg: PassConfig, *,
+                      min_m1_rel: float = 0.06, excess_frac: float = 0.25,
+                      min_excess: float = 400.0, ppm: float = 8.0,
+                      log=print) -> dict:
+    """Flag committed M0 peaks that are UNRESOLVED COMPOSITES -- their M0 (and
+    M+2/M+4) intensity exceeds what their own M+1 satellite implies, because a
+    coincident co-eluting compound shares the m/z.
+
+    The discriminator is the even/odd isotope split: the M+1 region (13C, 29Si,
+    15N -- all halogen-free) scales ONLY with the assigned compound, so it gives
+    the assigned compound's true intensity S = M+1_obs / M+1_predicted. If the
+    observed M0 markedly exceeds S, the excess is a co-component, and its
+    halogen content is read off the EVEN-shift residual (M+2/M0, M+4/M+2 ~ Br /
+    BrCl / Br2). This is the silanediol case the isotope-pattern 'mismatch'
+    flagged: C8H26O5Si4 (Si4) at 393 sits on a ~45% BrCl compound -- formula and
+    prediction are both correct; the peak is mixed. n=2 (clean) is not flagged.
+
+    Flags only (does not demote): the assigned compound IS present; the note
+    records the co-component fraction + halogen guess so the report is honest."""
+    out = {"flagged": 0}
+    mzs = ledger["mz"]
+    if "composite_note" not in ledger.columns:
+        ledger["composite_note"] = pd.Series(pd.NA, index=ledger.index, dtype="object")
+
+    def _sum_window(lo, hi):
+        m = (mzs >= lo) & (mzs <= hi)
+        return float(ledger.loc[m, "height"].sum(skipna=True))
+
+    for i, r in ledger[ledger["role"] == L.ROLE_M0].iterrows():
+        ionf = r["ion_formula"]
+        if ionf is pd.NA or pd.isna(ionf) or not str(ionf).strip():
+            continue
+        cnt = C.parse_formula(str(ionf))
+        m1_rel = sum(_M1_RATIO.get(el, 0.0) * n for el, n in cnt.items())
+        if m1_rel < min_m1_rel:
+            continue                      # too few C/Si to diagnose a composite
+        m0 = float(r["mz"]); h0 = float(r["height"])
+        if not (h0 > 0):
+            continue
+        # observed M+1 region: 13C(+1.0034) + 29Si(+0.9996) + 15N(+0.997)
+        h1 = _sum_window(m0 + 0.9940, m0 + 1.0070)
+        if h1 <= 0:
+            continue
+        s_assigned = h1 / m1_rel          # implied true intensity of the M0 owner
+        excess = h0 - s_assigned
+        if excess < min_excess or excess / h0 < excess_frac:
+            continue
+        # characterise the co-component via the even-shift residual. SUM (never
+        # overwrite) lines that round to the same integer shift, else the big
+        # 81Br M+2 (rel ~1.14) is clobbered by the tiny 13C2 line at +2.007.
+        pat: dict[int, float] = {}
+        try:
+            for d, rel, _ in ISO.isotope_pattern(str(ionf), min_rel=0.01):
+                pat[round(d)] = pat.get(round(d), 0.0) + rel
+        except Exception:
+            pat = {}
+        h2 = _sum_window(m0 + 1.992, m0 + 2.004)
+        h4 = _sum_window(m0 + 3.990, m0 + 4.002)
+        x2 = h2 - s_assigned * pat.get(2, 0.0)     # co-component M+2
+        x4 = h4 - s_assigned * pat.get(4, 0.0)     # co-component M+4
+        hal = "unknown"
+        if x2 > min_excess:
+            r2 = x2 / excess
+            r4 = x4 / x2 if x2 > 0 else 0.0
+            if r2 >= 1.6:
+                hal = "Br2"
+            elif r2 >= 1.15 and r4 >= 0.22:
+                hal = "BrCl"
+            elif r2 >= 0.7:
+                hal = "Br"
+            elif 0.22 <= r2 <= 0.45:
+                hal = "Cl"
+        ledger.at[i, "composite_note"] = (
+            f"composite: ~{100 * excess / h0:.0f}% co-eluting {hal} component "
+            f"(~{excess:.0f} cps); M+1 implies {str(r['neutral_formula'])} "
+            f"= ~{s_assigned:.0f} of {h0:.0f} cps")
+        out["flagged"] += 1
+    if out["flagged"]:
+        log(f"[composite] flagged {out['flagged']} unresolved composite peaks "
+            f"(M0 inflated beyond the M+1-implied owner intensity)")
     return out
 
 

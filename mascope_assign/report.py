@@ -85,8 +85,8 @@ _ASSIGN_COL_ORDER = [
     "mz", "height", "neutral_formula", "adduct", "ion_formula", "dbe",
     "compound_class", "oxidation", "heteroatoms", "ion_score",
     "compound_score", "ppm_error", "confidence", "candidate_density",
-    "tier_reason", "isotopologues_text", "alternatives_text", "pass_no",
-    "method", "commentary", "peak_id",
+    "composite_note", "tier_reason", "isotopologues_text", "alternatives_text",
+    "pass_no", "method", "commentary", "peak_id",
 ]
 
 
@@ -137,6 +137,8 @@ def build_sheets(ledger: pd.DataFrame, context: str = "ambient-air",
     # tiering: stamp if the ledger does not carry it (e.g. an old CSV)
     if "tier" not in led.columns or led.loc[led["role"] == L.ROLE_M0, "tier"].isna().all():
         T.apply_tiers(led)
+    if "composite_note" not in led.columns:   # old ledgers predate composite detection
+        led["composite_note"] = pd.NA
     m0 = led[led["role"] == L.ROLE_M0].copy()
     if len(m0):
         m0 = _enrich_m0(m0)
@@ -208,8 +210,9 @@ def build_sheets(ledger: pd.DataFrame, context: str = "ambient-air",
     # ownership audit (one row per physical peak)
     ownership = led[["peak_id", "mz", "height", "role", "tier",
                      "neutral_formula", "adduct", "ion_score", "ppm_error",
-                     "confidence", "parent_peak_id", "iso_label", "pass_no",
-                     "method", "commentary"]].sort_values("height", ascending=False)
+                     "confidence", "composite_note", "parent_peak_id",
+                     "iso_label", "pass_no", "method", "commentary"]
+                    ].sort_values("height", ascending=False)
 
     # target list (formula + adduct + best ppm), Identified first
     # ('Identified' > 'Candidate' lexically, hence the descending tier sort)
@@ -363,7 +366,7 @@ _NUM_FMT = {
     "dbe": "0.0",
 }
 _WRAP_COLS = {"commentary": 70, "evidence": 46, "why_candidate": 46,
-              "tier_reason": 46, "alternatives_text": 44,
+              "tier_reason": 46, "alternatives_text": 44, "composite_note": 50,
               "isotopologues_text": 30, "isotopologues": 30,
               "interpretation": 52, "explanation": 90, "value": 46}
 

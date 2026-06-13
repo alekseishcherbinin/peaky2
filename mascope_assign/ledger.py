@@ -49,6 +49,7 @@ _ASSIGN_COLS: dict[str, object] = {
     "tier": pd.NA,             # report tier: Identified | Candidate (tiers.py)
     "tier_reason": pd.NA,
     "candidate_density": pd.NA,  # formulas within CLOSE_MARGIN (winner incl.)
+    "composite_note": pd.NA,   # unresolved co-eluting compound flag (passes.py)
     "role": ROLE_UNEXPLAINED,
     "parent_peak_id": pd.NA,
     "iso_label": pd.NA,
