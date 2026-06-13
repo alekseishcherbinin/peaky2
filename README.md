@@ -51,11 +51,11 @@ exit non-zero on failure.
 - Heteroatoms enter the neutral only with positive evidence; relaxed filtering is
   "earned by evidence" (chain membership / isotope confirmation), never default.
 
-## Current status (2026-06-13, v37/v38)
+## Current status (2026-06-13, v39)
 
 Test sample `<sample-id>` (Br-CIMS, atmospheric), cutoff 100:
-- 267 M0, **60.6% peaks / 91.0% signal explained**, 21/21 flagships, ledger
-  clean. **Tiered: 179 Identified / 88 Candidate** (`tiers.py`; mechanical
+- 268 M0, **60.6% peaks / 91.0% signal explained**, 21/21 flagships, ledger
+  clean. **Tiered: 179 Identified / 89 Candidate** (`tiers.py`; mechanical
   rules, candidate-density currency, lattice-monster + BrCl demotions, same-ion
   decomposition aliases excluded). Excel is an 11-sheet styled workbook
   (Identified / Candidates-per-formula / evidence-characterized Unassigned +
