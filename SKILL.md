@@ -80,6 +80,7 @@ Pass-3 contaminant families are eligible. Reagent adducts are NOT set by context
 | 5 | **known-neutral completion**: cross-channel partners + series gaps of passes 1–4 (no new formula space) |
 | 6 | **anchored ladder gap-fill** (`ladders.py`): walk homolog/oxidation diagonals (+O/+CH₂/+CO₂/−H₂O, constant-DBE for carbon growth) out from Identified anchors, satellite-guarded, Candidate tier |
 | iso-env | **isotope-envelope completion** (`complete_isotope_envelopes`, before pass 4 + post-audit): claim every committed peak's full predicted M+2/M+4 envelope (Si/Br/Cl combos), attaching unexplained satellites and **displacing weak M0s that are really a parent's satellite** — kills the ~44% of "residual" peaks that are isotope lines (the silanediol M+2 mis-read as a Cl-F-S organic) |
+| composite | **composite detection** (`detect_composites`, post-audit): the M+1 region (¹³C/²⁹Si) is halogen-free so it scales only with the assigned compound; if observed M0 exceeds the M+1-implied intensity, an unresolved co-eluting compound shares the m/z. Flags (does not demote) + reads the co-component's halogen content off the even-shift residual. The silanediol n≥3 rungs are ~30–45% co-eluting BrCl/Br — formula + prediction are correct, the peak is mixed |
 | audits | 13C carbon-clamp (pre-pass-4 + post), Br-doublet repair, calibrated mass gate |
 
 ## Chemistry rules (enforced + regression-tested)

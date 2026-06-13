@@ -51,7 +51,7 @@ exit non-zero on failure.
 - Heteroatoms enter the neutral only with positive evidence; relaxed filtering is
   "earned by evidence" (chain membership / isotope confirmation), never default.
 
-## Current status (2026-06-13, v39)
+## Current status (2026-06-13, v40)
 
 Test sample `<sample-id>` (Br-CIMS, atmospheric), cutoff 100:
 - 268 M0, **60.6% peaks / 91.0% signal explained**, 21/21 flagships, ledger
@@ -60,6 +60,14 @@ Test sample `<sample-id>` (Br-CIMS, atmospheric), cutoff 100:
   decomposition aliases excluded). Excel is an 11-sheet styled workbook
   (Identified / Candidates-per-formula / evidence-characterized Unassigned +
   legend). Outputs archived per-version in `~/mascope-output/assign-dev/v*/`.
+- **Composite-peak detection (`detect_composites`)**: the M+1 region (13C/29Si)
+  is halogen-free, so it scales only with the assigned compound; if observed M0
+  exceeds the M+1-implied intensity, an unresolved co-eluting compound shares
+  the m/z. Flags (does not demote) + reads the co-component halogen off the
+  even-shift residual. The silanediol C8H26O5Si4 (393) scores only 35% in
+  Mascope because it is ~45% co-eluting BrCl -- formula (Si4, proven by +74.019
+  rung spacing) and prediction (binomial) are BOTH correct; the peak is mixed.
+  n=2 is clean. New `composite_note` column, surfaced in Identified + ownership.
 - **Isotope-envelope completion (`complete_isotope_envelopes`)**: predicts each
   committed ion's full M+1/M+2/M+4 envelope (`isotopes.isotope_pattern`,
   per-element convolution incl. Si/Br/Cl combos) and claims it — ~44% of the
