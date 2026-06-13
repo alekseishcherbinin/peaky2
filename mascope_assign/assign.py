@@ -164,6 +164,12 @@ def run(sample_id: str, context: str = "ambient-air", *,
     # coincident BrCl/Br compound; formula + prediction are both correct)
     summaries["composite"] = _safe(
         "composite", lambda: passes.detect_composites(led, cfg, log=log))
+    # de-blend: owner keeps assigned_fraction; the co-eluting compound becomes a
+    # synthetic '<id>.2' sub-peak (a target for constrained naming later).
+    # split_composites appends rows, so rebind led.
+    n_before = len(led)
+    led = passes.split_composites(led, cfg, log=log)
+    summaries["composite_split"] = {"split": len(led) - n_before}
     _checkpoint("audit")
 
     # final reagent sweep: catch any cluster peaks the passes left unexplained

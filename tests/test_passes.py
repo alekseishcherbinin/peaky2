@@ -557,6 +557,33 @@ P.detect_composites(pure, P.PassConfig(), log=lambda *a: None)
 check("composite: a self-consistent CHO M0 is NOT flagged",
       pd.isna(pure.loc[pure.peak_id == "p", "composite_note"].iloc[0]))
 
+# ---------- split_composites: de-blend into fractional sub-peaks ----------
+P.detect_composites(comp, P.PassConfig(), log=lambda *a: None)
+comp2 = P.split_composites(comp, P.PassConfig(), log=lambda *a: None)
+host = comp2[comp2.peak_id == "M0"].iloc[0]
+sub = comp2[comp2.peak_id == "M0.2"]
+check("split: a synthetic sub-peak M0.2 was created", len(sub) == 1, list(comp2.peak_id))
+check("split: host keeps assigned_fraction < 1 (the co-component is removed)",
+      float(host["assigned_fraction"]) < 0.95, host["assigned_fraction"])
+if len(sub):
+    s = sub.iloc[0]
+    check("split: sub-peak is synthetic, at the host m/z, linked to the host",
+          bool(s["synthetic"]) and abs(float(s["mz"]) - float(host["mz"])) < 1e-6
+          and s["host_peak_id"] == "M0", (s["synthetic"], s["host_peak_id"]))
+    check("split: signal is conserved (host_eff + sub == measured host height)",
+          abs(float(host["height"]) * float(host["assigned_fraction"])
+              + float(s["height"]) - float(host["height"])) < 2.0,
+          (host["height"], host["assigned_fraction"], s["height"]))
+    check("split: sub-peak commentary names the co-component (BrCl)",
+          "BrCl" in str(s["commentary"]), s["commentary"])
+# stats: synthetic excluded from the real-peak count, signal not double-counted
+st_c = L.stats(comp2)
+check("split: stats excludes synthetic from n_peaks", st_c["n_synthetic"] >= 1
+      and st_c["n_peaks"] == int((~comp2["synthetic"].fillna(False).astype(bool)).sum()),
+      (st_c["n_peaks"], st_c["n_synthetic"]))
+check("split: ledger still validates with synthetic rows", L.validate(comp2) == [],
+      L.validate(comp2))
+
 # ---------- demote_carbon_inconsistent (pre-pass-4 O15-monster clear) ----------
 # the 409.0015 case: pass 1 grabbed C11H10N2O15 (ion C11) but the 13C satellite
 # at +1.0034 measures ~C16 -> must clear BEFORE pass 4 so the di-bromide SOA

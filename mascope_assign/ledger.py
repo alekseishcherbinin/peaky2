@@ -50,6 +50,15 @@ _ASSIGN_COLS: dict[str, object] = {
     "tier_reason": pd.NA,
     "candidate_density": pd.NA,  # formulas within CLOSE_MARGIN (winner incl.)
     "composite_note": pd.NA,   # unresolved co-eluting compound flag (passes.py)
+    # composite de-blending: a peak's signal is split between its owner and an
+    # unresolved co-eluting compound. assigned_fraction is the owner's share of
+    # `height`; a synthetic 'P.2' sub-peak (synthetic=True, host_peak_id->P)
+    # carries the co-component's share. Effective signal = height*assigned_fraction.
+    "assigned_fraction": 1.0,
+    "synthetic": False,
+    "host_peak_id": pd.NA,
+    "co_height": np.nan,       # co-component intensity estimated on the host
+    "co_halogen": pd.NA,       # co-component halogen guess (Br / BrCl / Br2)
     "role": ROLE_UNEXPLAINED,
     "parent_peak_id": pd.NA,
     "iso_label": pd.NA,
@@ -332,19 +341,32 @@ def validate(ledger: pd.DataFrame) -> list[str]:
 
 
 def stats(ledger: pd.DataFrame) -> dict:
-    """Coverage summary by count and by signal (height)."""
-    n = len(ledger)
-    h_total = ledger["height"].sum(skipna=True)
+    """Coverage summary by count and by signal.
+
+    Synthetic composite sub-peaks (synthetic=True) are real signal but NOT real
+    peaks, so they are excluded from the peak COUNT while their share is counted
+    in the SIGNAL. Signal uses the EFFECTIVE height (height * assigned_fraction)
+    so a composite host and its split-off sub-peak don't double-count."""
+    led = ledger
+    synthetic = (led["synthetic"].fillna(False).astype(bool)
+                 if "synthetic" in led.columns else pd.Series(False, index=led.index))
+    frac = (led["assigned_fraction"].fillna(1.0)
+            if "assigned_fraction" in led.columns else pd.Series(1.0, index=led.index))
+    eff = led["height"].fillna(0.0) * frac        # effective (attributed) signal
+    real = ~synthetic                              # rows that are real peaks
+    n = int(real.sum())
+    h_total = float(eff.sum(skipna=True))
     out = {"n_peaks": n, "by_role": {}, "signal_by_role": {},
-           "count_frac_by_role": {}}
+           "count_frac_by_role": {}, "n_synthetic": int(synthetic.sum())}
     for role in (ROLE_M0, ROLE_ISO, ROLE_REAGENT, ROLE_UNEXPLAINED):
-        sub = ledger[ledger["role"] == role]
-        out["by_role"][role] = int(len(sub))
+        rolem = led["role"] == role
+        out["by_role"][role] = int((rolem & real).sum())
         out["signal_by_role"][role] = (
-            float(sub["height"].sum(skipna=True) / h_total) if h_total else 0.0)
+            float(eff[rolem].sum(skipna=True) / h_total) if h_total else 0.0)
         # signal-% is dominated by the reagent ions in CIMS; the peak-count
         # fraction is the honest residual metric, so report both
-        out["count_frac_by_role"][role] = float(len(sub) / n) if n else 0.0
+        out["count_frac_by_role"][role] = (
+            float(int((rolem & real).sum()) / n) if n else 0.0)
     if "confidence" in ledger.columns:
         out["by_confidence"] = (
             ledger.loc[ledger["role"] == ROLE_M0, "confidence"]

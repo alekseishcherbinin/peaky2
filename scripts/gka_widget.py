@@ -57,6 +57,8 @@ def build_points(ledger: pd.DataFrame) -> list[list]:
     rows = []
     for r in ledger.itertuples(index=False):
         d = r._asdict() if hasattr(r, "_asdict") else dict(zip(ledger.columns, r))
+        if d.get("synthetic") is True:    # composite sub-peaks overlap their host's m/z
+            continue
         c = _category(d)
         if c < 0:
             continue

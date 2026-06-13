@@ -511,6 +511,8 @@ def characterize_residual(ledger: pd.DataFrame, *, min_height: float = 0.0) -> p
     """
     un = ledger[(ledger["role"] == L.ROLE_UNEXPLAINED)
                 & (ledger["height"].fillna(0) >= min_height)].copy()
+    if "synthetic" in un.columns:   # composite co-component sub-peaks aren't raw residual
+        un = un[~un["synthetic"].fillna(False).astype(bool)]
     mzs = ledger["mz"].to_numpy()
     hs = ledger["height"].to_numpy()
 

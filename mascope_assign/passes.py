@@ -882,11 +882,62 @@ def detect_composites(ledger: pd.DataFrame, cfg: PassConfig, *,
             f"composite: ~{100 * excess / h0:.0f}% co-eluting {hal} component "
             f"(~{excess:.0f} cps); M+1 implies {str(r['neutral_formula'])} "
             f"= ~{s_assigned:.0f} of {h0:.0f} cps")
+        # structured fields for the de-blending step (split_composites)
+        ledger.at[i, "assigned_fraction"] = max(0.0, min(1.0, s_assigned / h0))
+        ledger.at[i, "co_height"] = excess
+        ledger.at[i, "co_halogen"] = hal
         out["flagged"] += 1
     if out["flagged"]:
         log(f"[composite] flagged {out['flagged']} unresolved composite peaks "
             f"(M0 inflated beyond the M+1-implied owner intensity)")
     return out
+
+
+def split_composites(ledger: pd.DataFrame, cfg: PassConfig, *,
+                     log=print) -> pd.DataFrame:
+    """De-blend the peaks `detect_composites` flagged: the owner keeps its
+    `assigned_fraction` of the measured height, and a SYNTHETIC sub-peak
+    ('<host>.2', same m/z) is created carrying the co-eluting compound's share
+    (co_height) plus its halogen guess. The sub-peak is a characterised residual
+    (role unexplained, synthetic=True, host_peak_id->host) -- a target for a
+    later constrained match that NAMES the co-component. Signal is conserved:
+    effective = height*assigned_fraction, so host + sub-peak sum to the original
+    height (the host's measured `height` is never altered).
+
+    Returns the (possibly grown) ledger -- new synthetic rows are appended, so
+    the caller must rebind: `led = split_composites(led, cfg)`."""
+    if "co_height" not in ledger.columns:
+        return ledger
+    syn = ledger["synthetic"].fillna(False).astype(bool)
+    hosts = ledger[(ledger["role"] == L.ROLE_M0)
+                   & ledger["co_height"].notna() & (~syn)]
+    existing = set(ledger["peak_id"])
+    new_rows = []
+    for _, r in hosts.iterrows():
+        co_h = float(r["co_height"])
+        sub_id = f"{r['peak_id']}.2"
+        if co_h < 1.0 or sub_id in existing:
+            continue
+        hal = str(r["co_halogen"])
+        row = {c: pd.NA for c in ledger.columns}
+        row.update({
+            "peak_id": sub_id, "mz": float(r["mz"]), "height": co_h,
+            "area": float("nan"), "role": L.ROLE_UNEXPLAINED, "synthetic": True,
+            "host_peak_id": r["peak_id"], "assigned_fraction": 1.0,
+            "locked": False, "co_height": float("nan"),
+            "commentary": (f"co-eluting {hal} component split from peak "
+                           f"{r['mz']:.4f} (~{co_h:.0f} cps); host owner "
+                           f"{str(r['neutral_formula'])} keeps "
+                           f"{100 * float(r['assigned_fraction']):.0f}%"),
+        })
+        new_rows.append(row)
+        existing.add(sub_id)
+    if not new_rows:
+        return ledger
+    add = pd.DataFrame(new_rows)[list(ledger.columns)]
+    log(f"[composite] split {len(new_rows)} composite peaks into fractional "
+        f"sub-peaks (owner keeps assigned_fraction; co-component -> '<id>.2')")
+    return pd.concat([ledger, add], ignore_index=True)
 
 
 def demote_carbon_inconsistent(ledger: pd.DataFrame, cfg: PassConfig, *,
