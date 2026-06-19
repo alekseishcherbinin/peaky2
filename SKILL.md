@@ -8,9 +8,13 @@ description: >-
   via the shell MCP; defers all mass + isotope scoring to Mascope's
   match_compounds; produces an 11-sheet tiered Excel (Identified / Candidates /
   below-assignability) with commentary, close alternatives, per-isotopologue
-  scores, a peak-ownership audit, and an interactive rotating-GKA widget. Triggers: "assign formulas", "peak
+  scores, a peak-ownership audit, and an interactive rotating-GKA widget. Also runs
+  a representative-sample BATCH pipeline (5 time-spaced + max-TIC samples assigned
+  and merged), time-series correlation clustering, a full Van Krevelen, and a
+  standard iterable PDF assignment report. Triggers: "assign formulas", "peak
   assignment", "what's in sample X", "annotate spectrum", "unassigned peaks",
-  "Kendrick / GKA", "homologous series", "CIMS", "HOM", "PFAS / contaminants".
+  "Kendrick / GKA", "homologous series", "CIMS", "HOM", "PFAS / contaminants",
+  "assign a batch", "Van Krevelen", "cluster figures", "PDF report".
 ---
 
 # Mascope multi-pass peak assignment
@@ -88,6 +92,51 @@ The pipeline was built negative-mode Br-specialized; positive-mode support
 `--ppm` (m/z trust, default 1.0) · `--search-ppm` (enumeration tol, 5.0) ·
 `--height-cutoff` (cps, 100) · `--no-pass2/3/4` · `--no-cache`.
 
+## Representative-sample batch pipeline (assign a whole batch, not one file)
+
+A single averaged file misses analytes present only part of a run. The batch
+pipeline assigns a **representative subset and merges by m/z**:
+
+- **`sampling.select_representative_samples(peaks)`** — THE RULE: 5 samples evenly
+  spaced in TIME (nearest distinct sample to each of 5 equally-spaced target times;
+  endpoints always in) **+ the max-TIC sample**. Selecting in time (not row index)
+  means a lone late file in an irregular run still gets a pick.
+- **`assign_batch.run(batch=NAME | peaks=, reagent='auto', out_dir=, ts_peaks=, amine_r_min=0.7)`**
+  — resolves the `profiles.ReagentProfile`, runs `assign.run` per selected file
+  (keeps each `per_file/<sid>_ledger.csv`), then an **offset-aware merge** (`align`)
+  + a file-to-file **jitter** table. Pass `ts_peaks` (the full-batch per-peak time
+  series) to enable the positive-mode NH4→amine gate below. Writes `merged_ledger.csv`,
+  `jitter*.csv`, `batch_summary.json`.
+- IDs must be fetched FRESH from the live server (`io_mascope.fetch_batch_samples`,
+  regex-escape the batch name) — cached `sample_item_id`s 404 when a server copy is
+  renamed.
+
+### Reagent-aware chemistry
+`assign.run(..., adducts=)` forces a known reagent's channels (a sparse-match positive
+file otherwise falls back to `[M-H]-` = wrong polarity). For positive urea-CIMS,
+**`cleanup.prefer_amine_over_ammonium(ledger, ts_peaks=, r_min=0.7)`** re-reads
+`[M+NH4]+` as `[M+H]+` of the +NH3 amine (the SAME ion) UNLESS the NH4 trace co-varies
+(r>=0.7) with the `[M+H]+`/urea parent, or the amine is valence-impossible. (Run via
+`assign_batch` at the merged level, where corroboration is complete.)
+
+### Time-series clustering + figures + report
+- **`cluster.py`** — TIC/reagent-normalised log-correlation, COMPLETE linkage at r>0.6
+  (signed distance keeps anti-phase apart) → `render_a4` A4-portrait paginated panel
+  figures (all clusters + a "remaining peaks" overview, panel legend = `formula
+  (ion-channels / isotope-peaks / match-score)`).
+- **`analyte_viz.render_van_krevelen_full`** — every assigned peak by CHO/CHON/CHOS
+  backbone (Si/F/halogen folded into the backbone, not split out).
+- **`pdf_report.build(out_dir, tag=, label=, ts_path=, batch_name=)`** — the STANDARD
+  iterable PDF report. Structure = `SECTIONS = [cover, coverage, composition, families,
+  clusters, methods]`, each a `section(ctx, pdf)` fn over a context loaded once by
+  `load_context`. To change the report, edit/reorder a section — nothing else couples.
+
+Reference drivers (live, scratch — fold into a package CLI when sharing) live in
+`~/mascope-output/orange-assign/`: `run_orange.py` (assign), `run_clusters.py`,
+`run_vankrevelen.py`, `run_report.py`. **<server> is behind a Cloudflare WAF** — a burst
+of live runs trips a 403 ("Attention Required") that clears after 15-30 min of no
+traffic (polling extends it); `deferred_rerun.py` waits it out.
+
 ## The pipeline
 
 | pass | what it does |
@@ -158,9 +207,14 @@ already open. `run_assignment.py` emits one per run.
 | `passes.py` | arbitration (complexity + **calibration-aware off-trend penalty**) + the pass director + offset-tolerant `calibrate`/`confidence_label`/`relabel_confidence` + polarity-aware pass-0 |
 | `residual.py` | Pass 4 residual explainer |
 | `siloxane.py` | dedicated PDMS/siloxane-ladder assignment (+C₂H₆OSi spacing + ²⁹Si/³⁰Si envelope, late + locked) |
-| `analyte_viz.py` | **consistent** Van Krevelen + raw time-series from a ledger + batch TS (one row per neutral, Si excluded, RAW intensity, changing-cv threshold — identical for every instrument; carries the channel/ion per analyte for hover). CLIs: `scripts/analyte_plots.py` (static PNG + json), `scripts/analyte_widgets.py` (self-contained **interactive HTML** — canvas + hover → neutral formula + ion channel, no server/CDN, like `gka_widget.py`) |
+| `analyte_viz.py` | **consistent** Van Krevelen + raw time-series from a ledger + batch TS (one row per neutral, RAW intensity, changing-cv threshold). **`render_van_krevelen_full`** = EVERY assigned peak by CHO/CHON/CHOS backbone (Si/F/halogen folded in). `attach_dynamics(bin_minutes=)` for short batches. CLIs: `scripts/analyte_plots.py`, `scripts/analyte_widgets.py` (interactive HTML) |
 | `degeneracy.py` | honest cross-family mass-degeneracy measurement (`degeneracy_density`/note) |
-| `cleanup.py` | post-pass-6 residual cleanup: isotope-confirmed recovery, bromide-cluster labelling (covalent oracle check), ringing-artifact flagging, **satellite reclaim** (attach leaked 13C/81Br/37Cl satellites) |
+| `cleanup.py` | residual cleanup: isotope-confirmed recovery, bromide-cluster labelling, ringing-artifact flagging, satellite reclaim, **`prefer_amine_over_ammonium`** (positive: re-read uncorroborated/non-co-varying `[M+NH4]+` as the `[M+H]+` amine) |
+| **`sampling.py`** | THE RULE — `select_representative_samples` (5 evenly-time-spaced + max-TIC) for batch assignment |
+| **`assign_batch.py`** | `run(batch\|peaks, ts_peaks=, amine_r_min=)` — assign the reps, keep per-file ledgers, offset-aware merge (`align`) + jitter table; applies the positive amine gate at merge level |
+| **`cluster.py`** | correlation clustering (log-corr, COMPLETE linkage r>0.6, signed distance) → `render_a4` A4-portrait paginated panels + remaining-peaks overview |
+| **`pdf_report.py`** | STANDARD iterable PDF report — `build()` over `SECTIONS=[cover, coverage, composition, families, clusters, methods]`, ctx loaded once |
+| `profiles.py` | `ReagentProfile` (Br/Ur: polarity/adducts/normaliser/context) + `resolve('auto')` |
 | `timeseries.py` | **time-resolved disposition** (optional, `--ts-batch`): reagent-normalise a batch's per-sample peaks, cv_norm + family co-variation -> classify each M0 inlet-flat-background vs ambient analyte, demote flat di-bromide/CO3 background |
 | `tiers.py` | Identified/Candidate tiering (margin, density, lattice/BrCl, **mass-error gate, CO₃-channel gate, degeneracy-aware**) |
 | `report.py` | Excel / markdown / sheets |

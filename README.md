@@ -11,12 +11,19 @@ mascope-peak-assign/
   SKILL.md            invocable manifest + full usage (read this first)
   ROADMAP.md          the agreed next-step quality work (calibration, carbon clamp, ...)
   README.md           this file
-  mascope_assign/     the 13-module package (see SKILL.md module map)
-  tests/              one test_<module>.py per module + fixtures/match_tree.json
+  mascope_assign/     the package (see SKILL.md module map) — single-sample assign
+                      + the batch pipeline: sampling / assign_batch / cluster /
+                      analyte_viz (full VK) / pdf_report
+  tests/              one test_<module>.py per module (22 files) + fixtures/match_tree.json
   scripts/
     run_assignment.py one-shot: pipeline -> csv/xlsx/md/json/html
     gka_widget.py     standalone interactive rotating-GKA from a ledger CSV
 ```
+
+For a whole batch (5 time-spaced + max-TIC samples merged → clustering → PDF
+report), see the "Representative-sample batch pipeline" section of SKILL.md and the
+reference drivers in `~/mascope-output/orange-assign/` (run_orange / run_clusters /
+run_vankrevelen / run_report).
 
 ## Run it
 

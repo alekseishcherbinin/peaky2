@@ -1,46 +1,60 @@
-# AGENT PEAKY — RESUME HERE (updated 2026-06-19)
+# AGENT PEAKY — RESUME HERE (updated 2026-06-19, session 2)
 
-**Project:** consolidate this Mascope pipeline (assign → bin/TS → cluster → local
-isotope-validate → figures) into ONE scalable, shareable Claude Code skill ("peaky").
-Memory: `agent-peaky` (+ `mascope-sdk-knowledge`, `mascope-assign-package`).
+**Project:** consolidate the Mascope pipeline into ONE scalable, shareable Claude Code
+skill ("peaky"): representative-sample assignment → merge → time-series clustering →
+figures → PDF report. Memory: `agent-peaky` (+ `mascope-sdk-knowledge`, `mascope-assign-package`).
 
-**Data path:** SDK-over-shell, credentials at `~/.mascope/.env` (MASCOPE_URL +
-MASCOPE_ACCESS_TOKEN). The `mcp__mascope__*` MCP tools 401 (stale token) — don't use
-them; `io_mascope.connect()` reads the live .env.
+**Data path:** SDK-over-shell, creds at `~/.mascope/.env`; `io_mascope.connect()` reads the
+live file (the `mcp__mascope__*` tools hold a stale token). **<server> is behind a Cloudflare
+WAF** — a burst of live runs trips a 403 HTML block ("Attention Required", NOT a token error)
+that clears after 15-30 min of NO traffic (polling EXTENDS it). For a blocked live re-run use
+`~/mascope-output/orange-assign/deferred_rerun.py` (waits it out, then runs).
 
-**Spine built (2026-06-19):** `mascope_assign/profiles.py` (ReagentProfile Br/Ur +
-`resolve(auto, peaks)`), `mascope_assign/pipeline.py` (`run(batch|dataset|peaks,
-reagent='auto', stages)` — load + profile + 'matrix' wired + representative-sample
-selection), `mascope_assign/sampling.py` (THE RULE, below), `io_mascope` (canonical
-.env search + `fetch_batch_peaks`). Tested on the orange batches.
+**PIPELINE — all built + tested this session (`mascope_assign/`):**
+- `profiles.py` — ReagentProfile (Br/Ur: polarity/adducts/normaliser/`context`) + `resolve('auto')`.
+- `sampling.py` — THE RULE: assign **5 evenly-TIME-spaced samples + the max-TIC sample**, then
+  merge (a single averaged file misses part-of-run analytes). Selecting in TIME not row-index.
+- `assign_batch.py` — `run(batch|peaks, reagent='auto', out_dir, ts_peaks=, amine_r_min=0.7)`:
+  select reps → `assign.run` per file (keeps `per_file/<sid>_ledger.csv`) → OFFSET-AWARE merge
+  (`align`) + JITTER table; positive reagents get the NH4→amine gate (below). `assign.run` gained
+  an `adducts=` override (forces the reagent channels — a sparse-match positive file otherwise
+  fell back to [M-H]- = wrong polarity).
+- `cluster.py` — TIC/reagent-norm log-correlation, COMPLETE linkage r>0.6, signed distance
+  (anti-phase stays apart) → `render_a4` A4-portrait paginated panels (ALL clusters + a
+  "remaining peaks" overview); `cluster_rows(maxc=None)`.
+- `analyte_viz.py` — Van Krevelen (organic + `render_van_krevelen_full` = every assigned peak by
+  CHO/CHON/CHOS backbone, Si/F/halogen folded in) + `attach_dynamics(bin_minutes=)` (short-batch).
+- `pdf_report.py` — STANDARD ITERABLE report: `SECTIONS=[cover, coverage, composition, families,
+  clusters, methods]`, ctx loaded once by `load_context`. "Assignment quality" page = match-score-
+  by-tier + mass-accuracy box (Id/Cand/isotopologue) + assigned-vs-unassigned + per-ADDUCT channels
+  with signal%. Cover has batch name + skill version (git sha). Cluster legend = `formula
+  (ion-channels / isotope-peaks / match-score)`.
+- `cleanup.prefer_amine_over_ammonium(ledger, ts_peaks=, r_min=0.7)` — positive urea-CIMS: re-read
+  [M+NH4]+ as [M+H]+ of the +NH3 amine (SAME ion) UNLESS the NH4 trace co-varies (r>=0.7) with the
+  [M+H]+/urea parent OR the amine is valence-impossible (forced). Wired in assign_batch (merged level).
+- `residual.py` pass4.A FIX: F enabled only for carbon-CLAMPED pairs (F×wide-C grid was a CPU
+  blow-up that HUNG on high-iso-pair Br samples). **CAVEAT: re-verify Br ambient-ref flagships.**
 
-**SAMPLE-SELECTION RULE (set 2026-06-19, `sampling.py`, LIVE in pipeline):** we do
-NOT assign a single averaged file — a peak only present part of the run is then
-invisible (the uronium 08:20 snapshot at hour 11.3 missed the hour-18-22 event
-analytes). Instead assign a representative subset and MERGE by m/z: **5 samples
-evenly spaced in TIME** (nearest distinct sample to each of 5 equally-spaced target
-times; endpoints always in) **+ the 1 max-TIC sample** (richest spectrum). `run()`
-always computes `out['assign_samples']` (table w/ role: time-grid / max-TIC /
-both) + `out['assign_sample_ids']`. Selecting in TIME not row-index = a lone late
-file in an irregular run still gets a pick. 19 tests in test_sampling.py.
+**ORANGE RESULTS** (live "Orange peeling (Ur+ CIMS)" / "(Br- CIMS)", <server>, 81/80 samples).
+Outputs in `~/mascope-output/orange-assign/{Ur,Br}/` (report_*.pdf + clusters/VK pngs + merged_
+ledger.csv + per_file/). **Ur 1319 M0 (1065 Id); channels [M+H]+ 670/urea 454/NH4 155/Na 40**
+(after the amine gate; from-scratch re-run reproduced it). **Br 502 M0 (402 Id).** Scratch drivers
+(NOT in repo): run_orange / run_clusters / run_vankrevelen / run_report / run_triple_traces /
+deferred_rerun, all in `~/mascope-output/orange-assign/`.
 
-**NEXT (in priority order):**
-1. Wire **assign** stage: the sample SELECTION is done — what remains is to loop
-   `assign.run` over `out['assign_sample_ids']` and MERGE the ledgers by m/z (the
-   merge logic exists in scratch `ts_uro/merge_experiment.py` — fold it in).
-2. Fold the **validate** stage into pipeline.py — a THIN layer on the existing
-   `isotopes.py` (`isotope_pattern` envelope + `prescan`), NOT the scratch
-   `~/mascope-output/assign-dev/isotope_validate.py` (which duplicates it). The only
-   new part = scoring predicted M+2 vs the OBSERVED spectrum over the brightest samples.
-3. Fold the **cluster** stage (scratch: cluster_analytes/fold_orphans/*_raw) → module,
-   profile-driven; keep the <12-sample guard.
-4. Add binning **max-width split guard** to `timeseries.build_matrix` (single-linkage
-   chains on dense/drifting data; negligible on orange but harden for sharing).
-5. SKILL.md entry + tests + de-hardcode → push to GitHub (remote not yet created).
+**NEXT (priority):**
+1. **Na+ gate (proposed, NOT done):** the 40 uronium [M+Na]+ are the WEAKEST channel (mean score
+   0.845, only 20% corroborated, median 3 files, 12 single-file). Apply the NH4-style gate — demote
+   uncorroborated/non-co-varying Na+ to Candidate (or drop the opportunistic Na+ channel for uronium).
+   The **[M+H2O+H]+ water-adduct channel was REJECTED**: 92 unexplained peaks sit at +18.0106 but only
+   1 co-varies with its parent (vs 28% for NH4) — coincidental spacing, not adducts.
+2. **Br re-run with the TS wired** (negative; the NH4 gate is a no-op there, just refreshes per-file).
+3. **Fold the scratch drivers into the package** (one CLI: assign+cluster+report a batch) + de-hardcode
+   → create the GitHub remote + push (none yet; .env is outside the repo, .gitignore covers parquet/log/npy).
+4. Binning max-width split guard in `timeseries.build_matrix` (single-linkage chains on dense/drifting data).
 
-**Test batches** ("Aleksei's workspace"): Orange peeling Br `NH7D3KHzoGcXCycw`,
-Orange peeling Ur `WcEpq37OUtyzkwlP` (23 samples each). Parquets cached in
-`~/mascope-output/orange/`.
+**Tests: 22 files green** (sampling 19, assign_batch 12, cluster 14, pdf_report 10, cleanup 29,
+analyte_viz 11, io_mascope 21, …). Run `python3 tests/test_*.py`. WAF: don't run scoring CONCURRENTLY.
 
 ---
 
