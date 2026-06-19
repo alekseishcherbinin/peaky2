@@ -245,8 +245,11 @@ def render_a4(rows, grid, traces_z, traces_raw, item_label, out_prefix, *,
     paths, idx = [], base_color
     for pi, page in enumerate(pages, 1):
         fig = plt.figure(figsize=(PAGE_W, PAGE_H))
-        t = title + (f"   (page {pi}/{len(pages)})" if len(pages) > 1 else "")
-        fig.text(L / PAGE_W, (PAGE_H - 0.40) / PAGE_H, t, fontsize=12.5, weight="bold", color="#222")
+        ty = (PAGE_H - 0.40) / PAGE_H
+        fig.text(L / PAGE_W, ty, title, fontsize=11, weight="bold", color="#222")
+        if len(pages) > 1:                            # page number RIGHT-aligned so it never clips
+            fig.text(1 - R / PAGE_W, ty, f"page {pi}/{len(pages)}", fontsize=10,
+                     color="#777", ha="right")
         ytop = PAGE_H - TOPM
         for k, (row, w, h, lab_h) in enumerate(page):
             cid, mem, rbar, sh, ph = row
