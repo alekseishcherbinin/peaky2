@@ -44,6 +44,31 @@ def _is_contaminant(formula: str) -> bool:
     return any(cnt.get(e, 0) for e in _CONTAM_ELEMENTS)
 
 
+# Composition categories for the FULL Van Krevelen (every assigned peak shown,
+# nothing excluded). Order = legend order; the first matching wins.
+FULL_CLASS_ORDER = ("CHO", "CHON", "CHOS", "F-containing", "halogenated", "siloxane")
+FULL_CLASS_COLORS = {
+    "CHO": "#1D9E75", "CHON": "#7F77DD", "CHOS": "#D85A30",
+    "F-containing": "#D4537E", "halogenated": "#BA7517", "siloxane": "#378ADD"}
+
+
+def full_class(formula: str) -> str:
+    """Composition class for the full VK: Si -> siloxane; else F -> F-containing;
+    else Cl/Br-in-neutral -> halogenated; else CHOS / CHON / CHO."""
+    c = C.parse_formula(str(formula))
+    if c.get("Si", 0):
+        return "siloxane"
+    if c.get("F", 0):
+        return "F-containing"
+    if c.get("Cl", 0) or c.get("Br", 0):
+        return "halogenated"
+    if c.get("S", 0):
+        return "CHOS"
+    if c.get("N", 0):
+        return "CHON"
+    return "CHO"
+
+
 def analyte_table(ledger: pd.DataFrame, *, exclude_contaminant: bool = True
                   ) -> pd.DataFrame:
     """The committed organic analytes (one row per M0). Adds H/C, O/C, N count
@@ -132,11 +157,15 @@ def time_traces(ts_peaks: pd.DataFrame, formulas, adducts, *, mode: str = "raw",
 
 
 def attach_dynamics(analytes: pd.DataFrame, ts_peaks: pd.DataFrame, adducts, *,
-                    mode: str = "raw", reagent_mzs=None) -> pd.DataFrame:
-    """Add median_cps / cv / changing to the analyte table from the time series."""
+                    mode: str = "raw", reagent_mzs=None,
+                    bin_minutes: int = DEFAULT_BIN_MIN) -> pd.DataFrame:
+    """Add median_cps / cv / changing to the analyte table from the time series.
+    `bin_minutes` must be scaled to the batch span (the 30-min default gives too
+    few points on a short densely-sampled batch -> cv unreliable / changing all
+    False)."""
     df = analytes.copy()
     _, traces = time_traces(ts_peaks, df["neutral_formula"].tolist(), adducts,
-                            mode=mode, reagent_mzs=reagent_mzs)
+                            mode=mode, reagent_mzs=reagent_mzs, bin_minutes=bin_minutes)
     med, cv = {}, {}
     for f in df["neutral_formula"]:
         tr = traces[f].dropna().values if f in traces else np.array([])
@@ -196,6 +225,42 @@ def render_van_krevelen(analytes: pd.DataFrame, path: str, *, title: str = "") -
     ax.set_xlabel("O/C"); ax.set_ylabel("H/C"); ax.set_xlim(0, 1.3); ax.set_ylim(0.3, 3.0)
     ax.set_title(title); ax.legend(fontsize=8, loc="upper right"); ax.grid(alpha=0.3)
     fig.tight_layout(); fig.savefig(path, dpi=120); plt.close(fig)
+    return path
+
+
+def render_van_krevelen_full(analytes: pd.DataFrame, path: str, *, title: str = "",
+                             xmax: float = 1.4, ymax: float = 4.2) -> str:
+    """Van Krevelen showing EVERY assigned peak, coloured by composition class
+    (CHO/CHON/CHOS/F-containing/halogenated/siloxane) so nothing is hidden.
+    Changing analytes are drawn solid with a white edge; flat ones dimmed. Size =
+    log intensity. Expects `full_class` membership computed from neutral_formula.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    a = analytes.copy()
+    if "fclass" not in a.columns:
+        a["fclass"] = a["neutral_formula"].map(full_class)
+    chg = a.get("changing", pd.Series(False, index=a.index)).astype(bool)
+    sz = np.maximum(3.0, (np.log10(a["median_cps"].clip(lower=1)) - 2.0) * 7)
+    fig, ax = plt.subplots(figsize=(8, 5.5))
+    for kl in FULL_CLASS_ORDER:
+        col = FULL_CLASS_COLORS[kl]
+        g = a[a["fclass"] == kl]
+        if not len(g):
+            continue
+        gf, gc = g[~chg.loc[g.index]], g[chg.loc[g.index]]
+        if len(gf):
+            ax.scatter(gf["oc"], gf["hc"], s=sz.loc[gf.index], c=col, alpha=0.28, linewidths=0)
+        if len(gc):
+            ax.scatter(gc["oc"], gc["hc"], s=sz.loc[gc.index], c=col, alpha=0.9,
+                       linewidths=0.3, edgecolors="white")
+        ax.scatter([], [], c=col, label=f"{kl} ({len(g)})")     # legend proxy (count)
+    ax.scatter([], [], c="0.5", marker="o", alpha=0.3, label="(faded = flat / solid = changing)")
+    ax.set_xlabel("O/C"); ax.set_ylabel("H/C")
+    ax.set_xlim(0, xmax); ax.set_ylim(0.3, ymax)
+    ax.set_title(title); ax.legend(fontsize=8, loc="upper right", framealpha=0.9); ax.grid(alpha=0.3)
+    fig.tight_layout(); fig.savefig(path, dpi=130); plt.close(fig)
     return path
 
 
