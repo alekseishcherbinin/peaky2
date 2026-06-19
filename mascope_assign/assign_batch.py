@@ -283,6 +283,7 @@ def run(peaks=None, *, batch: str | None = None, dataset: str | None = None,
 
     summary = {
         "reagent": prof.name, "label": prof.label, "context": context,
+        "batch_name": batch,
         "n_files": len(sample_ids), "sample_ids": sample_ids,
         "tol_ppm": tol_ppm, "offsets_ppm": offsets,
         "merged_M0": int(len(merged)),

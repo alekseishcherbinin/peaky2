@@ -228,39 +228,57 @@ def render_van_krevelen(analytes: pd.DataFrame, path: str, *, title: str = "") -
     return path
 
 
+_BACKBONE_ORDER = ("CHO", "CHON", "CHOS")
+_BACKBONE_COLORS = {"CHO": "#1D9E75", "CHON": "#7F77DD", "CHOS": "#D85A30"}
+
+
+def backbone_class(formula: str) -> str:
+    """Backbone class: CHOS if S, else CHON if N, else CHO. Heteroatoms Si/F/Cl/Br
+    are 'additions' to this backbone, NOT a separate class (a siloxane with no N is
+    CHO; a fluorinated species with N is CHON)."""
+    c = C.parse_formula(str(formula))
+    if c.get("S", 0):
+        return "CHOS"
+    if c.get("N", 0):
+        return "CHON"
+    return "CHO"
+
+
 def render_van_krevelen_full(analytes: pd.DataFrame, path: str, *, title: str = "",
-                             xmax: float = 1.4, ymax: float = 4.2) -> str:
-    """Van Krevelen showing EVERY assigned peak, coloured by composition class
-    (CHO/CHON/CHOS/F-containing/halogenated/siloxane) so nothing is hidden.
-    Changing analytes are drawn solid with a white edge; flat ones dimmed. Size =
-    log intensity. Expects `full_class` membership computed from neutral_formula.
+                             xmax: float = 1.4, ymax: float = 4.2, dpi: int = 150) -> str:
+    """Van Krevelen showing EVERY assigned peak, coloured by CHO/CHON/CHOS BACKBONE
+    (Si/F/halogen folded into their backbone class, not split out). Changing
+    analytes solid with a white edge; flat ones dimmed. Size = log intensity.
     """
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     a = analytes.copy()
-    if "fclass" not in a.columns:
-        a["fclass"] = a["neutral_formula"].map(full_class)
+    if "klass" not in a.columns:
+        a["klass"] = a["neutral_formula"].map(backbone_class)
     chg = a.get("changing", pd.Series(False, index=a.index)).astype(bool)
-    sz = np.maximum(3.0, (np.log10(a["median_cps"].clip(lower=1)) - 2.0) * 7)
-    fig, ax = plt.subplots(figsize=(8, 5.5))
-    for kl in FULL_CLASS_ORDER:
-        col = FULL_CLASS_COLORS[kl]
-        g = a[a["fclass"] == kl]
+    sz = np.maximum(6.0, (np.log10(a["median_cps"].clip(lower=1)) - 2.0) * 9)
+    fig, ax = plt.subplots(figsize=(8.5, 6))
+    for kl in _BACKBONE_ORDER:
+        col = _BACKBONE_COLORS[kl]
+        g = a[a["klass"] == kl]
         if not len(g):
             continue
         gf, gc = g[~chg.loc[g.index]], g[chg.loc[g.index]]
         if len(gf):
-            ax.scatter(gf["oc"], gf["hc"], s=sz.loc[gf.index], c=col, alpha=0.28, linewidths=0)
+            ax.scatter(gf["oc"], gf["hc"], s=sz.loc[gf.index], c=col, alpha=0.30, linewidths=0)
         if len(gc):
             ax.scatter(gc["oc"], gc["hc"], s=sz.loc[gc.index], c=col, alpha=0.9,
-                       linewidths=0.3, edgecolors="white")
-        ax.scatter([], [], c=col, label=f"{kl} ({len(g)})")     # legend proxy (count)
-    ax.scatter([], [], c="0.5", marker="o", alpha=0.3, label="(faded = flat / solid = changing)")
-    ax.set_xlabel("O/C"); ax.set_ylabel("H/C")
+                       linewidths=0.4, edgecolors="white")
+        ax.scatter([], [], c=col, s=60, label=f"{kl}  (n={len(g)})")
+    ax.scatter([], [], c="0.5", s=60, alpha=0.3, label="faded = flat · solid = changing")
+    ax.set_xlabel("O/C", fontsize=12); ax.set_ylabel("H/C", fontsize=12)
     ax.set_xlim(0, xmax); ax.set_ylim(0.3, ymax)
-    ax.set_title(title); ax.legend(fontsize=8, loc="upper right", framealpha=0.9); ax.grid(alpha=0.3)
-    fig.tight_layout(); fig.savefig(path, dpi=130); plt.close(fig)
+    ax.tick_params(labelsize=11)
+    ax.set_title(title, fontsize=13)
+    ax.legend(fontsize=11, loc="upper right", framealpha=0.95, markerscale=1.2)
+    ax.grid(alpha=0.3)
+    fig.tight_layout(); fig.savefig(path, dpi=dpi); plt.close(fig)
     return path
 
 

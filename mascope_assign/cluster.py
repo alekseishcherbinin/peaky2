@@ -142,8 +142,8 @@ def render_panels(rows, grid, traces_z, traces_raw, item_label, out, *,
     if not rows:
         return None
     Wf, Lm, Rm, Tm, Bm = 11.0, 0.95, 0.5, 0.5, 0.25
-    plot_h, lh, gap = 1.7, 0.158, 0.5
-    wrapped = [_wrap([item_label(m) for m in mem]) for _, mem, _, _, _ in rows]
+    plot_h, lh, gap = 1.9, 0.205, 0.5
+    wrapped = [_wrap([item_label(m) for m in mem], width=88) for _, mem, _, _, _ in rows]
     heights = [(plot_h, 0.14 + len(w) * lh) for w in wrapped]
     Hf = Tm + Bm + sum(ph + th + gap for ph, th in heights)
     fig = plt.figure(figsize=(Wf, Hf))
@@ -175,12 +175,13 @@ def render_panels(rows, grid, traces_z, traces_raw, item_label, out, *,
                 ax.set_ylim(*ylim)
             ax.set_ylabel("cps")
         ax.set_xlim(0, float(grid[-1])); ax.grid(alpha=0.18, which="both")
+        ax.tick_params(labelsize=10)
         ax.set_title(f"cluster {cid} · n={len(mem)} · r̄={rbar:.2f} · {sh} (peak~h{ph:.1f})",
-                     fontsize=9, loc="left")
-        ax.set_xlabel("hour of experiment (UTC)") if k == len(rows) - 1 else ax.set_xticklabels([])
+                     fontsize=11.5, loc="left")
+        ax.set_xlabel("hour of experiment (UTC)", fontsize=10) if k == len(rows) - 1 else ax.set_xticklabels([])
         tx = fig.add_axes([lf, (cur - h0 - th) / Hf, wf, th / Hf]); tx.axis("off")
-        tx.text(0, 1, "\n".join(w), va="top", ha="left", fontsize=7.6,
+        tx.text(0, 1, "\n".join(w), va="top", ha="left", fontsize=9.5,
                 family="monospace", color="#333", transform=tx.transAxes)
         cur -= (h0 + th + gap)
-    fig.savefig(out, dpi=140, bbox_inches="tight"); plt.close(fig)
+    fig.savefig(out, dpi=170, bbox_inches="tight"); plt.close(fig)
     return out

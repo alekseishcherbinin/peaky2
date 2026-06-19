@@ -33,21 +33,48 @@ GREY = "#777777"
 # ---------------------------------------------------------------------------
 # context: load everything the report needs, once
 # ---------------------------------------------------------------------------
+def _skill_version() -> str:
+    """Identify the skill build: assign version + git short SHA of this repo."""
+    import subprocess
+    d = os.path.dirname(os.path.abspath(__file__))
+    sha = "?"
+    try:
+        sha = subprocess.check_output(["git", "-C", d, "rev-parse", "--short", "HEAD"],
+                                      text=True, stderr=subprocess.DEVNULL).strip()
+    except Exception:
+        pass
+    try:
+        from . import assign
+        av = assign.__version__
+    except Exception:
+        av = "?"
+    return f"mascope_assign (assign v{av}) · git {sha}"
+
+
 def load_context(out_dir: str, *, tag: str, label: str, ts_path: str | None = None,
-                 generated: str = "") -> dict:
+                 generated: str = "", batch_name: str | None = None) -> dict:
     from . import analyte_viz as V
+    from . import chemistry as C
     out_dir = os.path.expanduser(out_dir)
     ctx: dict = {"out_dir": out_dir, "tag": tag, "label": label, "fig": {},
-                 "generated": generated}
+                 "generated": generated, "version": _skill_version(),
+                 "batch_name": batch_name}
 
     merged = pd.read_csv(f"{out_dir}/merged_ledger.csv")
     ctx["merged"] = merged
     ctx["n_m0"] = len(merged)
     ctx["tiers"] = merged["tier"].value_counts().to_dict()
     u = merged.drop_duplicates("neutral_formula").copy()
-    u["fclass"] = u["neutral_formula"].map(V.full_class)
     ctx["n_neutrals"] = len(u)
-    ctx["composition"] = u["fclass"].value_counts().to_dict()
+    # composition by CHO/CHON/CHOS backbone (Si/F/halogen folded in)
+    ctx["composition"] = u["neutral_formula"].map(V.backbone_class).value_counts().to_dict()
+    # heteroatom side-counts (additions to the backbone)
+    cnt = u["neutral_formula"].map(lambda f: C.parse_formula(str(f)))
+    ctx["hetero"] = {
+        "Si-bearing (siloxane)": int(cnt.map(lambda c: c.get("Si", 0) > 0).sum()),
+        "F-bearing": int(cnt.map(lambda c: c.get("F", 0) > 0).sum()),
+        "Cl/Br in neutral": int(cnt.map(lambda c: c.get("Cl", 0) + c.get("Br", 0) > 0).sum()),
+    }
 
     # per-file pooled role breakdown (count + signal) + the explained m/z set
     rows = []
@@ -67,6 +94,10 @@ def load_context(out_dir: str, *, tag: str, label: str, ts_path: str | None = No
     if ts_path and os.path.exists(os.path.expanduser(ts_path)):
         from . import timeseries as TS
         ts = pd.read_parquet(os.path.expanduser(ts_path))
+        if not ctx.get("batch_name") and "sample_batch_name" in ts.columns:
+            names = ts["sample_batch_name"].dropna().unique()
+            if len(names):
+                ctx["batch_name"] = str(names[0])
         mat, bin_mz = TS.build_matrix(ts)
         binsig = mat.sum(axis=0)
         expl = ctx.get("expl_mz", np.array([]))
@@ -125,14 +156,18 @@ def _text_lines(fig, lines, *, x=0.08, y0=0.90, dy=0.026, size=10):
     return y
 
 
-def _image_page(pdf, png, title):
+def _image_page(pdf, png, title, *, landscape=False, dpi=200):
+    """Embed a PNG as one page. landscape=True for wide figures (cluster panels)
+    so they downscale less and the labels stay legible. dpi sets the page raster."""
     import matplotlib.image as mpimg
     import matplotlib.pyplot as plt
-    fig = plt.figure(figsize=A4)
-    fig.text(0.08, 0.965, title, fontsize=14, weight="bold", color=INK)
-    ax = fig.add_axes([0.04, 0.03, 0.92, 0.90])
+    figsize = (A4[1], A4[0]) if landscape else A4
+    fig = plt.figure(figsize=figsize, dpi=dpi)
+    fig.text(0.04, 0.975, title, fontsize=13, weight="bold", color=INK)
+    ax = fig.add_axes([0.02, 0.02, 0.96, 0.93])
     ax.imshow(mpimg.imread(png)); ax.axis("off")
-    _close(pdf, fig)
+    pdf.savefig(fig, dpi=dpi)
+    plt.close(fig)
 
 
 def _pct(part, whole):
@@ -145,12 +180,16 @@ def _pct(part, whole):
 def cover(ctx, pdf):
     import matplotlib.pyplot as plt
     fig = plt.figure(figsize=A4)
-    fig.text(0.08, 0.93, f"{ctx['label']} — Peak Assignment Report", fontsize=20,
-             weight="bold", color=INK)
-    fig.text(0.08, 0.90, "orange peeling · representative-sample pipeline", fontsize=12,
+    batch = ctx.get("batch_name") or ctx["label"]
+    fig.text(0.08, 0.93, "Peak Assignment Report", fontsize=20, weight="bold", color=INK)
+    fig.text(0.08, 0.895, batch, fontsize=14, color=INK)
+    fig.text(0.08, 0.872, f"{ctx['label']} · representative-sample pipeline", fontsize=11,
              color=GREY)
+    meta = ctx.get("version", "")
     if ctx.get("generated"):
-        fig.text(0.08, 0.875, f"generated {ctx['generated']}", fontsize=9, color=GREY)
+        meta = f"{meta}  ·  generated {ctx['generated']}" if meta else f"generated {ctx['generated']}"
+    if meta:
+        fig.text(0.08, 0.852, meta, fontsize=8.5, color=GREY)
 
     tiers = ctx["tiers"]; idn = tiers.get("Identified", 0); cn = tiers.get("Candidate", 0)
     ts = ctx.get("ts"); sig = (_pct(ts["expl_signal"], ts["tot_signal"]) if ts else None)
@@ -192,7 +231,7 @@ def cover(ctx, pdf):
             ("b", f"Formula disagreements:        {j.get('formula_disagreements','?')}  ·  "
                   f"tier-unstable: {j.get('tier_unstable','?')}"),
         ]
-    _text_lines(fig, head, y0=0.83, dy=0.030)
+    _text_lines(fig, head, y0=0.80, dy=0.030)
     _close(pdf, fig)
 
 
@@ -277,14 +316,21 @@ def composition(ctx, pdf):
     fig = plt.figure(figsize=A4)
     fig.text(0.08, 0.93, "Composition of the assigned peaks", fontsize=15, weight="bold", color=INK)
     comp = ctx.get("composition", {})
-    from . import analyte_viz as V
-    lines = [("h", "Distinct neutral compounds by class"), ("gap", 0.3)]
-    for kl in V.FULL_CLASS_ORDER:
+    het = ctx.get("hetero", {})
+    lines = [("h", f"Distinct neutral compounds by backbone ({ctx['n_neutrals']} total)"),
+             ("gap", 0.3)]
+    for kl in ("CHO", "CHON", "CHOS"):
         if kl in comp:
-            lines.append(("m", f"   {kl:16s} {comp[kl]}"))
+            lines.append(("m", f"   {kl:6s} {comp[kl]}"))
     lines += [("gap", 1),
-              ("dim", "siloxane = PDMS/silicone inlet bleed (contaminant); F-containing & "
-                      "halogenated are reagent/contaminant ladders, not analytes.")]
+              ("h", "Heteroatom additions (within the backbone classes above)"),
+              ("gap", 0.3)]
+    for k, v in het.items():
+        lines.append(("m", f"   {k:24s} {v}"))
+    lines += [("gap", 1),
+              ("dim", "Si/F/halogen are folded into the CHO/CHON/CHOS backbone, not split out"),
+              ("dim", "(a siloxane with no N is CHO; a fluorinated species with N is CHON)."),
+              ("dim", "Si = PDMS/silicone inlet bleed; F/halogen are reagent/contaminant ladders.")]
     _text_lines(fig, lines, y0=0.86, dy=0.030)
     _close(pdf, fig)
 
@@ -292,7 +338,8 @@ def composition(ctx, pdf):
 def families(ctx, pdf):
     if "changing" in ctx["fig"]:
         _image_page(pdf, ctx["fig"]["changing"],
-                    f"{ctx['label']} — co-varying analyte families (changing peaks)")
+                    f"{ctx['label']} — co-varying analyte families (changing peaks)",
+                    landscape=True)
     cc = ctx.get("changing_csv")
     if cc is None or not len(cc):
         return
@@ -321,10 +368,10 @@ def families(ctx, pdf):
 def clusters(ctx, pdf):
     if "flat" in ctx["fig"]:
         _image_page(pdf, ctx["fig"]["flat"],
-                    f"{ctx['label']} — flat background (RAW intensity bands)")
+                    f"{ctx['label']} — flat background (RAW intensity bands)", landscape=True)
     if "unassigned" in ctx["fig"]:
         _image_page(pdf, ctx["fig"]["unassigned"],
-                    f"{ctx['label']} — unexplained-peak clusters (RAW intensity)")
+                    f"{ctx['label']} — unexplained-peak clusters (RAW intensity)", landscape=True)
 
 
 def methods(ctx, pdf):
@@ -357,13 +404,15 @@ SECTIONS = [cover, coverage, composition, families, clusters, methods]
 
 
 def build(out_dir: str, *, tag: str, label: str, ts_path: str | None = None,
-          out_pdf: str | None = None, generated: str = "",
+          out_pdf: str | None = None, generated: str = "", batch_name: str | None = None,
           sections=SECTIONS) -> str:
-    """Build the PDF report for one batch run. `out_dir` holds the run artifacts."""
+    """Build the PDF report for one batch run. `out_dir` holds the run artifacts.
+    `batch_name` titles the report (else taken from the TS, else the reagent label)."""
     import matplotlib
     matplotlib.use("Agg")
     from matplotlib.backends.backend_pdf import PdfPages
-    ctx = load_context(out_dir, tag=tag, label=label, ts_path=ts_path, generated=generated)
+    ctx = load_context(out_dir, tag=tag, label=label, ts_path=ts_path,
+                       generated=generated, batch_name=batch_name)
     out_pdf = out_pdf or os.path.join(os.path.expanduser(out_dir), f"report_{tag}.pdf")
     with PdfPages(out_pdf) as pdf:
         for section in sections:

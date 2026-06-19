@@ -40,8 +40,11 @@ with tempfile.TemporaryDirectory() as d:
     ctx = R.load_context(d, tag="Ur", label="Ur⁺ CIMS")
     check("load_context: merged loaded", ctx["n_m0"] == 4, ctx.get("n_m0"))
     check("load_context: tiers counted", ctx["tiers"].get("Identified") == 2, ctx["tiers"])
-    check("load_context: composition has siloxane + F",
-          {"siloxane", "F-containing"} <= set(ctx["composition"]), ctx["composition"])
+    check("load_context: composition is CHO/CHON/CHOS backbone",
+          set(ctx["composition"]) <= {"CHO", "CHON", "CHOS"}, ctx["composition"])
+    check("load_context: heteroatom side-counts Si + F",
+          ctx["hetero"]["Si-bearing (siloxane)"] == 1 and ctx["hetero"]["F-bearing"] == 1,
+          ctx.get("hetero"))
     check("load_context: role breakdown present", "unexplained" in ctx.get("role_count", {}),
           ctx.get("role_count"))
 
