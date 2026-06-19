@@ -269,6 +269,10 @@ def run(sample_id: str, context: str = "ambient-air", *,
         "siloxane", lambda: siloxane.assign_siloxane_ladder(
             client, sample_id, led, profile, cfg, adducts=adducts, log=log))
 
+    # NB the uronium [M+NH4]+ -> protonated-amine re-read (cleanup.prefer_amine_
+    # over_ammonium) is applied at the MERGED level (assign_batch), where the
+    # cross-channel corroboration evidence is complete -- not here per-file.
+
     # honest mass-degeneracy measurement: stamps degeneracy_density /
     # degeneracy_note with the cross-family competing tie set so a reader sees
     # how identifiable each mass really is. MUST run BEFORE tiers -- the tier

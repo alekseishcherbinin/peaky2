@@ -405,3 +405,54 @@ def run_cleanup(client, sample_id, ledger, profile, cfg, *, log=print) -> dict:
     return {"recovered": rec["recovered"], "clusters": clu["labelled"],
             "cluster_covalent_ties": clu.get("covalent_ties", 0),
             "artifacts": art["flagged"], "reclaimed_satellites": sat["reclaimed"]}
+
+
+def prefer_amine_over_ammonium(ledger: pd.DataFrame, *, log=print) -> dict:
+    """Uronium / positive urea-CIMS: a [M+NH4]+ adduct of a CHO neutral X is mass-
+    AND isotope-identical to [M+H]+ of the amine X+NH3 (the SAME ion formula), so
+    the data cannot distinguish them. In an N-rich urea source the protonated amine
+    is the simpler explanation than an ammonium side-adduct, so RE-READ each
+    [M+NH4]+ assignment as [M+H]+ of X+NH3 -- UNLESS:
+
+      * X is CORROBORATED -- the SAME neutral X is independently assigned as [M+H]+
+        or [M+(CH4N2O)H]+ (urea cluster) elsewhere; then the molecule is really
+        present and the NH4 adduct is well supported, so KEEP it; or
+      * the amine X+NH3 is valence-impossible (saturated X -> negative DBE); the
+        NH4 adduct is then the only valid reading and is FORCED/kept.
+
+    Only neutral_formula + adduct change (the ion, m/z, score, tier, ppm are
+    identical for the two readings). Relabels in place; returns a summary.
+    """
+    if not {"neutral_formula", "adduct"} <= set(ledger.columns):
+        return {"relabeled": 0, "kept_corroborated": 0, "forced_nh4": 0}
+    # works on a per-sample ledger (role column) or a merged M0-only frame (no role)
+    is_m0 = (ledger["role"] == L.ROLE_M0) if "role" in ledger.columns \
+        else pd.Series(True, index=ledger.index)
+    corrob = set(ledger.loc[ledger["adduct"].isin(["[M+H]+", "[M+(CH4N2O)H]+"]),
+                            "neutral_formula"].dropna().astype(str))
+    relabeled = kept = forced = 0
+    idx = ledger.index[is_m0 & (ledger["adduct"] == "[M+NH4]+")]
+    for i in idx:
+        X = str(ledger.at[i, "neutral_formula"] or "")
+        if not X or X == "nan":
+            continue
+        if X in corrob:                                   # strong evidence -> keep NH4
+            kept += 1
+            continue
+        cnt = C.parse_formula(X)
+        cnt["N"] = cnt.get("N", 0) + 1
+        cnt["H"] = cnt.get("H", 0) + 3
+        ok, _ = C.dbe_ok(cnt)
+        if not ok:                                        # amine impossible -> NH4 forced
+            forced += 1
+            continue
+        ledger.at[i, "neutral_formula"] = C.format_formula(cnt)
+        ledger.at[i, "adduct"] = "[M+H]+"
+        if "tier_reason" in ledger.columns:
+            ledger.at[i, "tier_reason"] = (
+                str(ledger.at[i, "tier_reason"] or "")
+                + " | NH4-adduct re-read as protonated +NH3 amine (uronium parsimony)").strip(" |")
+        relabeled += 1
+    log(f"[uronium-amine] {relabeled} [M+NH4]+ re-read as [M+H]+ amine; "
+        f"kept {kept} corroborated NH4 adducts; {forced} forced (no valid amine)")
+    return {"relabeled": relabeled, "kept_corroborated": kept, "forced_nh4": forced}

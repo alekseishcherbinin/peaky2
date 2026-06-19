@@ -126,5 +126,29 @@ check("reclaim: isolated peak untouched", L.role_of(ledr, "far") == L.ROLE_UNEXP
 check("reclaim: parent M0 untouched", L.role_of(ledr, "par") == L.ROLE_M0)
 check("reclaim: ledger valid", L.validate(ledr) == [])
 
+# --- prefer_amine_over_ammonium (uronium NH4 -> protonated amine) -----------
+leda = pd.DataFrame([
+    dict(peak_id="a", mz=186.15, neutral_formula="C10H16O2", adduct="[M+NH4]+",
+         role=L.ROLE_M0, tier_reason=""),                    # uncorroborated, valid amine
+    dict(peak_id="b", mz=158.13, neutral_formula="C9H16O", adduct="[M+NH4]+",
+         role=L.ROLE_M0, tier_reason=""),                    # corroborated by row c
+    dict(peak_id="c", mz=141.12, neutral_formula="C9H16O", adduct="[M+H]+",
+         role=L.ROLE_M0, tier_reason=""),
+    dict(peak_id="d", mz=168.12, neutral_formula="C6H14O4", adduct="[M+NH4]+",
+         role=L.ROLE_M0, tier_reason=""),                    # saturated -> amine impossible
+    dict(peak_id="e", mz=999.0, neutral_formula=None, adduct=None,
+         role=L.ROLE_ISO, tier_reason=""),
+])
+outa = CU.prefer_amine_over_ammonium(leda, log=lambda *a, **k: None)
+check("amine: uncorroborated NH4 -> [M+H]+ of X+NH3",
+      leda.loc[0, "neutral_formula"] == "C10H19NO2" and leda.loc[0, "adduct"] == "[M+H]+",
+      leda.loc[0].to_dict())
+check("amine: corroborated NH4 adduct kept",
+      leda.loc[1, "neutral_formula"] == "C9H16O" and leda.loc[1, "adduct"] == "[M+NH4]+")
+check("amine: saturated X (no valid amine) -> NH4 forced/kept",
+      leda.loc[3, "neutral_formula"] == "C6H14O4" and leda.loc[3, "adduct"] == "[M+NH4]+")
+check("amine: summary counts", outa == {"relabeled": 1, "kept_corroborated": 1, "forced_nh4": 1}, outa)
+check("amine: relabel noted in tier_reason", "re-read" in str(leda.loc[0, "tier_reason"]))
+
 print(f"\n{PASS} passed, {FAIL} failed")
 sys.exit(1 if FAIL else 0)

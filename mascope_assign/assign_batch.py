@@ -278,6 +278,12 @@ def run(peaks=None, *, batch: str | None = None, dataset: str | None = None,
         log(f"[assign_batch]   {sid}: offset={offsets[sid]} stats={res.get('stats')}")
 
     merged, jitter = align(per_file, tol_ppm=tol_ppm, offsets=offsets)
+    # Positive urea-CIMS: re-read uncorroborated [M+NH4]+ adducts as [M+H]+ of the
+    # +NH3 amine (mass/isotope-identical; simpler in an N-rich source). Done at the
+    # MERGED level where cross-channel corroboration is complete.
+    if prof.polarity == "+":
+        from . import cleanup
+        cleanup.prefer_amine_over_ammonium(merged, log=log)
     merged.to_csv(os.path.join(out_dir, "merged_ledger.csv"), index=False)
     jitter.to_csv(os.path.join(out_dir, "jitter.csv"), index=False)
 
