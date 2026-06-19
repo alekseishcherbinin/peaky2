@@ -223,7 +223,8 @@ def render_a4(rows, grid, traces_z, traces_raw, item_label, out_prefix, *,
     if not rows:
         return []
     PAGE_W, PAGE_H = 8.27, 11.69
-    L, R, TOPM, BOTM = 0.62, 0.30, 0.70, 0.40
+    L, R, BOTM = 0.62, 0.30, 0.40
+    TOPM = 1.0 if subtitle else 0.70          # extra room for a subtitle/legend key
     UW, UH = PAGE_W - L - R, PAGE_H - TOPM - BOTM
     TRACE_H, GAP_TL, LINE_H, PANEL_GAP, WRAP = 1.30, 0.40, 0.165, 0.55, 96
     XLAB_H = 0.26          # extra clearance for the last panel's "hour..." x-axis label
