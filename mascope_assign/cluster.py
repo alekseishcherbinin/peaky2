@@ -212,7 +212,7 @@ def render_panels(rows, grid, traces_z, traces_raw, item_label, out, *,
 
 
 def render_a4(rows, grid, traces_z, traces_raw, item_label, out_prefix, *,
-              mode="raw", ylim=None, title="", labels=True, base_color=0):
+              mode="raw", ylim=None, title="", subtitle="", labels=True, base_color=0):
     """Render cluster panels onto A4 PORTRAIT pages: each panel spans the A4 text
     width, panels are packed top-down by height and a new page starts when the page
     is full (a panel never straddles a page). A clear GAP separates each trace from
@@ -246,8 +246,10 @@ def render_a4(rows, grid, traces_z, traces_raw, item_label, out_prefix, *,
     paths, idx = [], base_color
     for pi, page in enumerate(pages, 1):
         fig = plt.figure(figsize=(PAGE_W, PAGE_H))
-        ty = (PAGE_H - 0.40) / PAGE_H
+        ty = (PAGE_H - 0.38) / PAGE_H
         fig.text(L / PAGE_W, ty, title, fontsize=11, weight="bold", color="#222")
+        if subtitle:
+            fig.text(L / PAGE_W, ty - 0.165 / PAGE_H, subtitle, fontsize=8.5, color="#666")
         if len(pages) > 1:                            # page number RIGHT-aligned so it never clips
             fig.text(1 - R / PAGE_W, ty, f"page {pi}/{len(pages)}", fontsize=10,
                      color="#777", ha="right")
