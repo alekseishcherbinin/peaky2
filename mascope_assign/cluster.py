@@ -225,7 +225,8 @@ def render_a4(rows, grid, traces_z, traces_raw, item_label, out_prefix, *,
     PAGE_W, PAGE_H = 8.27, 11.69
     L, R, TOPM, BOTM = 0.62, 0.30, 0.70, 0.40
     UW, UH = PAGE_W - L - R, PAGE_H - TOPM - BOTM
-    TRACE_H, GAP_TL, LINE_H, PANEL_GAP, WRAP = 1.30, 0.36, 0.165, 0.55, 96
+    TRACE_H, GAP_TL, LINE_H, PANEL_GAP, WRAP = 1.30, 0.40, 0.165, 0.55, 96
+    XLAB_H = 0.26          # extra clearance for the last panel's "hour..." x-axis label
 
     pan = []
     for row in rows:
@@ -275,10 +276,13 @@ def render_a4(rows, grid, traces_z, traces_raw, item_label, out_prefix, *,
             rbar_s = f"r̄={rbar:.2f} · " if rbar == rbar else ""
             head = f"{cid} · n={len(mem)}" if isinstance(cid, str) else f"cluster {cid} · n={len(mem)}"
             ax.set_title(f"{head} · {rbar_s}{sh} (peak~h{ph:.1f})", fontsize=10.5, loc="left")
-            if k == len(page) - 1:
+            last = (k == len(page) - 1)
+            if last:
                 ax.set_xlabel("hour of experiment (UTC)", fontsize=9)
             if w:
-                ty = ytop - TRACE_H - GAP_TL
+                # the last panel carries the x-axis label in the gap -> push its
+                # formula list down by XLAB_H so the two never collide
+                ty = ytop - TRACE_H - GAP_TL - (XLAB_H if last else 0.0)
                 tx = fig.add_axes([L / PAGE_W, (ty - lab_h) / PAGE_H, UW / PAGE_W, lab_h / PAGE_H])
                 tx.axis("off")
                 tx.text(0, 1, "\n".join(w), va="top", ha="left", fontsize=8.8,
