@@ -271,16 +271,25 @@ def stage_a_iso_pairs(client, sample_id: str, ledger: pd.DataFrame, profile,
     # peak is invisible to both pass 3 (not a chain member) and pass 4 (no F
     # in the grid) -- which is how TFA.Br- at 192.9116 (-0.8 ppm, textbook
     # 0.978 doublet) sat unexplained from v13 through v18.
+    f_evidence = False
     try:
         from . import series_detect as SD
         ev = SD.detect_series(ledger, ppm=5.0)
-        if len(ev) and bool(((ev["significant"])
-                             & (ev["action"] == "fluorinated")).any()):
-            base_ranges["F"] = (0, 17)
-            log("[pass4.A] F enabled in pair enumeration "
-                "(decoy-validated CF2/C2F4 chain evidence)")
+        f_evidence = bool(len(ev) and ((ev["significant"])
+                                       & (ev["action"] == "fluorinated")).any())
     except Exception:
         pass
+    if f_evidence:
+        # F is enabled ONLY for carbon-CLAMPED pairs (below). Adding F(0,17) to the
+        # WIDE-carbon grid is a combinatorial blow-up: each pair's ranges differ
+        # (per-pair halogen count + clamp) so the grid cache misses and rebuilds a
+        # ~20M-formula grid per pair -- on a sample with many unclamped pairs this
+        # spins for many minutes (orange Br: 68 pairs). The legitimate fluorinated
+        # finds (e.g. TFA.Br- @192.9116) carry a 13C satellite -> they ARE clamped,
+        # so F where C is pinned (tiny grid) keeps them; F on the wide grid only
+        # produces the C9H13ClF2O16-class mass-fit monsters the O>6 cap exists for.
+        log("[pass4.A] fluorinated chain evidence -> F enabled for carbon-clamped "
+            "pairs only (F x wide-carbon grid is a combinatorial blow-up)")
     # enumerate per pair, pooled scoring. CARBON CLAMP: when the light peak has
     # a measured 13C satellite, restrict C to the measured count -- this both
     # shrinks the grid ~5x and turns "closest fit" into "consistent with the
@@ -294,6 +303,8 @@ def stage_a_iso_pairs(client, sample_id: str, ledger: pd.DataFrame, profile,
         if clamp is not None:
             ranges["C"] = clamp
             n_clamped += 1
+            if f_evidence:
+                ranges["F"] = (0, 17)         # F only where carbon is pinned
         cands = candidates_for_pair(p["light_mz"], p["element"], p["n_halogen"],
                                     adducts, ranges=ranges,
                                     ppm=cfg.residual_ppm_pattern)
