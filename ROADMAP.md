@@ -1,3 +1,36 @@
+# AGENT PEAKY — RESUME HERE (updated 2026-06-19)
+
+**Project:** consolidate this Mascope pipeline (assign → bin/TS → cluster → local
+isotope-validate → figures) into ONE scalable, shareable Claude Code skill ("peaky").
+Memory: `agent-peaky` (+ `mascope-sdk-knowledge`, `mascope-assign-package`).
+
+**Data path:** SDK-over-shell, credentials at `~/.mascope/.env` (MASCOPE_URL +
+MASCOPE_ACCESS_TOKEN). The `mcp__mascope__*` MCP tools 401 (stale token) — don't use
+them; `io_mascope.connect()` reads the live .env.
+
+**Spine built (2026-06-19):** `mascope_assign/profiles.py` (ReagentProfile Br/Ur +
+`resolve(auto, peaks)`), `mascope_assign/pipeline.py` (`run(batch|dataset|peaks,
+reagent='auto', stages)` — load + profile + 'matrix' wired), `io_mascope` (canonical
+.env search + `fetch_batch_peaks`). Tested on the orange batches.
+
+**NEXT (in priority order):**
+1. Fold the **validate** stage into pipeline.py — a THIN layer on the existing
+   `isotopes.py` (`isotope_pattern` envelope + `prescan`), NOT the scratch
+   `~/mascope-output/assign-dev/isotope_validate.py` (which duplicates it). The only
+   new part = scoring predicted M+2 vs the OBSERVED spectrum over the brightest samples.
+2. Fold the **cluster** stage (scratch: cluster_analytes/fold_orphans/*_raw) → module,
+   profile-driven; keep the <12-sample guard.
+3. Add binning **max-width split guard** to `timeseries.build_matrix` (single-linkage
+   chains on dense/drifting data; negligible on orange but harden for sharing).
+4. Wire **assign** stage (already in pkg via assign.py/passes.py) into pipeline.
+5. SKILL.md entry + tests + de-hardcode → push to GitHub (remote not yet created).
+
+**Test batches** ("Aleksei's workspace"): Orange peeling Br `NH7D3KHzoGcXCycw`,
+Orange peeling Ur `WcEpq37OUtyzkwlP` (23 samples each). Parquets cached in
+`~/mascope-output/orange/`.
+
+---
+
 # Roadmap — state after v48 (2026-06-16) and what comes next
 
 ## ✅ DONE (2026-06-16): URONIUM run through the FULL pipeline (positive mode)
