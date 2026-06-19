@@ -276,9 +276,11 @@ def render_van_krevelen_full(analytes: pd.DataFrame, path: str, *, title: str = 
     ax.set_xlim(0, xmax); ax.set_ylim(0.3, ymax)
     ax.tick_params(labelsize=11)
     ax.set_title(title, fontsize=13)
-    ax.legend(fontsize=11, loc="upper right", framealpha=0.95, markerscale=1.2)
+    # legend OUTSIDE the plot (to the right) so it never crowds the data
+    ax.legend(fontsize=10.5, loc="upper left", bbox_to_anchor=(1.02, 1.0),
+              framealpha=0.95, markerscale=1.2, borderaxespad=0.0)
     ax.grid(alpha=0.3)
-    fig.tight_layout(); fig.savefig(path, dpi=dpi); plt.close(fig)
+    fig.tight_layout(); fig.savefig(path, dpi=dpi, bbox_inches="tight"); plt.close(fig)
     return path
 
 

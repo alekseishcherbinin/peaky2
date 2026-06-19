@@ -151,10 +151,11 @@ def render_paged(rows, grid, traces_z, traces_raw, item_label, out_prefix, *,
 
 
 def render_panels(rows, grid, traces_z, traces_raw, item_label, out, *,
-                  mode="raw", title="", event_span=None, ylim=None):
+                  mode="raw", title="", event_span=None, ylim=None, labels=True):
     """Stacked per-cluster panels. mode='z' (z-scored shape, mean) or 'raw'
     (log cps, median). `item_label` maps a column -> its printed label
-    (formula or m/z). `event_span` shades an (h0,h1) window."""
+    (formula or m/z). `event_span` shades an (h0,h1) window. labels=False drops
+    the per-member label block (for a dense 'remaining peaks' overview panel)."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -162,7 +163,8 @@ def render_panels(rows, grid, traces_z, traces_raw, item_label, out, *,
         return None
     Wf, Lm, Rm, Tm, Bm = 11.0, 0.95, 0.5, 0.5, 0.25
     plot_h, lh, gap = 1.9, 0.205, 0.5
-    wrapped = [_wrap([item_label(m) for m in mem], width=88) for _, mem, _, _, _ in rows]
+    wrapped = ([_wrap([item_label(m) for m in mem], width=88) for _, mem, _, _, _ in rows]
+               if labels else [[] for _ in rows])
     heights = [(plot_h, 0.14 + len(w) * lh) for w in wrapped]
     Hf = Tm + Bm + sum(ph + th + gap for ph, th in heights)
     fig = plt.figure(figsize=(Wf, Hf))
@@ -195,12 +197,45 @@ def render_panels(rows, grid, traces_z, traces_raw, item_label, out, *,
             ax.set_ylabel("cps")
         ax.set_xlim(0, float(grid[-1])); ax.grid(alpha=0.18, which="both")
         ax.tick_params(labelsize=10)
-        ax.set_title(f"cluster {cid} · n={len(mem)} · r̄={rbar:.2f} · {sh} (peak~h{ph:.1f})",
-                     fontsize=11.5, loc="left")
+        rbar_s = f"r̄={rbar:.2f} · " if rbar == rbar else ""        # skip for the remaining panel
+        head = (f"{cid} · n={len(mem)}" if isinstance(cid, str)
+                else f"cluster {cid} · n={len(mem)}")
+        ax.set_title(f"{head} · {rbar_s}{sh} (peak~h{ph:.1f})", fontsize=11.5, loc="left")
         ax.set_xlabel("hour of experiment (UTC)", fontsize=10) if k == len(rows) - 1 else ax.set_xticklabels([])
-        tx = fig.add_axes([lf, (cur - h0 - th) / Hf, wf, th / Hf]); tx.axis("off")
-        tx.text(0, 1, "\n".join(w), va="top", ha="left", fontsize=9.5,
-                family="monospace", color="#333", transform=tx.transAxes)
+        if labels:
+            tx = fig.add_axes([lf, (cur - h0 - th) / Hf, wf, th / Hf]); tx.axis("off")
+            tx.text(0, 1, "\n".join(w), va="top", ha="left", fontsize=9.5,
+                    family="monospace", color="#333", transform=tx.transAxes)
         cur -= (h0 + th + gap)
     fig.savefig(out, dpi=170, bbox_inches="tight"); plt.close(fig)
     return out
+
+
+def remaining_row(cols, lab, big, traces_raw, grid):
+    """A single overview 'cluster' of every peak NOT in a >=MIN_MEMBERS cluster
+    (singletons + <3-member groups) so ALL signal is plotted. Returns (row, members)
+    or (None, [])."""
+    bigset = set(int(b) for b in big)
+    rem = [c for c in cols if int(lab.get(c, -1)) not in bigset]
+    if not rem:
+        return None, []
+    Lg = np.log10(traces_raw[rem].clip(lower=1e-9))
+    Z = (Lg - Lg.mean()) / Lg.std()
+    mz = smooth(Z.mean(axis=1).values)
+    ph = float(grid[int(np.nanargmax(mz))])
+    return (f"remaining {len(rem)} peaks", rem, float("nan"), shape_of(mz), ph), rem
+
+
+def render_clusters(rows, grid, traces_z, traces_raw, item_label, out_prefix, *,
+                    remaining=None, per_page=10, title="", **kw):
+    """Paged cluster panels (labelled) PLUS an optional final 'remaining' overview
+    panel (one panel, no per-member labels) so every peak is plotted. Returns paths."""
+    paths = render_paged(rows, grid, traces_z, traces_raw, item_label, out_prefix,
+                         per_page=per_page, title=title, **kw)
+    if remaining is not None:
+        out = f"{out_prefix}_p{len(paths) + 1}.png"
+        render_panels([remaining], grid, traces_z, traces_raw, item_label, out,
+                      labels=False, title=f"{title} — remaining peaks (singletons / <3-member)",
+                      **kw)
+        paths.append(out)
+    return paths

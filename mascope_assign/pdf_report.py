@@ -71,10 +71,21 @@ def load_context(out_dir: str, *, tag: str, label: str, ts_path: str | None = No
     # heteroatom side-counts (additions to the backbone)
     cnt = u["neutral_formula"].map(lambda f: C.parse_formula(str(f)))
     ctx["hetero"] = {
-        "Si-bearing (siloxane)": int(cnt.map(lambda c: c.get("Si", 0) > 0).sum()),
+        "Si-bearing": int(cnt.map(lambda c: c.get("Si", 0) > 0).sum()),
         "F-bearing": int(cnt.map(lambda c: c.get("F", 0) > 0).sum()),
         "Cl/Br in neutral": int(cnt.map(lambda c: c.get("Cl", 0) + c.get("Br", 0) > 0).sum()),
     }
+    # match score per tier + adduct-channel breakdown (assignment-quality page)
+    if "ion_score" in merged.columns:
+        gs = merged.groupby("tier")["ion_score"].mean()
+        ctx["score_by_tier"] = {t: float(gs[t]) for t in gs.index}
+    ctx["adduct_cat"] = (merged["adduct"].map(_adduct_cat).value_counts().to_dict())
+    # the representative sample NAMES (timestamps), not just ids
+    ss = f"{out_dir}/selected_samples.csv"
+    if os.path.exists(ss):
+        s = pd.read_csv(ss)
+        name = s["sample_item_name"] if "sample_item_name" in s.columns else s["sample_item_id"]
+        ctx["samples"] = list(zip(name.astype(str), s.get("role", pd.Series([""] * len(s))).astype(str)))
 
     # per-file pooled role breakdown (count + signal) + the explained m/z set
     rows = []
@@ -171,17 +182,20 @@ def _image_page(pdf, png, title, *, landscape=False, dpi=200, native=False, src_
     img = mpimg.imread(png)
     if native:
         ih, iw = img.shape[0] / src_dpi, img.shape[1] / src_dpi
-        Th = 0.5                                    # title strip (inches)
-        fig = plt.figure(figsize=(iw, ih + Th), dpi=src_dpi)
-        fig.text(0.01, 1 - 0.20 / (ih + Th), title, fontsize=12, weight="bold", color=INK, va="top")
+        Th = 0.5 if title else 0.0                  # title strip (inches); the figures
+        fig = plt.figure(figsize=(iw, ih + Th), dpi=src_dpi)   # carry their own title
+        if title:
+            fig.text(0.01, 1 - 0.20 / (ih + Th), title, fontsize=12, weight="bold",
+                     color=INK, va="top")
         ax = fig.add_axes([0.005, 0.002, 0.99, ih / (ih + Th)])
         ax.imshow(img); ax.axis("off")
         pdf.savefig(fig); plt.close(fig)
         return
     figsize = (A4[1], A4[0]) if landscape else A4
     fig = plt.figure(figsize=figsize, dpi=dpi)
-    fig.text(0.04, 0.975, title, fontsize=13, weight="bold", color=INK)
-    ax = fig.add_axes([0.02, 0.02, 0.96, 0.93])
+    if title:
+        fig.text(0.04, 0.975, title, fontsize=13, weight="bold", color=INK)
+    ax = fig.add_axes([0.02, 0.02, 0.96, 0.93] if title else [0.02, 0.02, 0.96, 0.96])
     ax.imshow(img); ax.axis("off")
     pdf.savefig(fig, dpi=dpi)
     plt.close(fig)
@@ -189,6 +203,24 @@ def _image_page(pdf, png, title, *, landscape=False, dpi=200, native=False, src_
 
 def _pct(part, whole):
     return 100.0 * part / whole if whole else 0.0
+
+
+# how each analyte ion is formed: bare (de)protonated, clustered with the reagent,
+# or adducted with another small species.
+_REAGENT_CLUSTER = {"[M+Br]-", "[M+HBr+Br]-", "[M+Br2]-", "[M+Br3]-", "[M+Cl]-",
+                    "[M+I]-", "[M+I2]-", "[M+(CH4N2O)H]+"}
+_OTHER_ADDUCT = {"[M+Na]+", "[M+NH4]+", "[M+CO3]-", "[M+HSO4]-"}
+
+
+def _adduct_cat(a) -> str:
+    a = str(a)
+    if a in ("[M+H]+", "[M-H]-"):
+        return "protonated / deprotonated"
+    if a in _REAGENT_CLUSTER:
+        return "reagent cluster"
+    if a in _OTHER_ADDUCT:
+        return "other adduct (Na/NH4/CO3)"
+    return "other"
 
 
 # ---------------------------------------------------------------------------
@@ -212,7 +244,7 @@ def cover(ctx, pdf):
     ts = ctx.get("ts"); sig = (_pct(ts["expl_signal"], ts["tot_signal"]) if ts else None)
     ex_c = (_pct(ts["expl_count"], ts["nbins"]) if ts else None)
     head = [
-        ("h", "Headline"),
+        ("h", "Summary"),
         ("gap", 0.3),
         ("b", f"Unique analytes assigned (M0):   {ctx['n_m0']}   "
               f"({idn} Identified / {cn} Candidate)"),
@@ -225,8 +257,6 @@ def cover(ctx, pdf):
             ("b", f"Unexplained:                      {ts['nbins']-ts['expl_count']} bins "
                   f"({100-ex_c:.0f}% count, {100-sig:.0f}% signal)"),
         ]
-    b = ctx.get("batch", {})
-    sids = b.get("sample_ids", [])
     head += [
         ("gap", 1),
         ("h", "Representative samples assigned"),
@@ -234,8 +264,8 @@ def cover(ctx, pdf):
         ("b", f"{ctx['n_files']} files: 5 evenly time-spaced + the max-TIC sample, "
               "merged by m/z."),
     ]
-    for s in sids[:8]:
-        head.append(("m", f"   {s}"))
+    for name, role in ctx.get("samples", [])[:8]:
+        head.append(("m", f"   {name}   [{role}]"))
     j = ctx.get("jitter", {})
     if j:
         head += [
@@ -245,90 +275,69 @@ def cover(ctx, pdf):
             ("b", f"Per-file calibration spread:  {j.get('offset_spread_ppm','?')} ppm"),
             ("b", f"Mass jitter (median / p95):   {j.get('mz_jitter_raw_median','?')} / "
                   f"{j.get('mz_jitter_raw_p95','?')} ppm  (≈ genuine peak noise)"),
-            ("b", f"Formula disagreements:        {j.get('formula_disagreements','?')}  ·  "
-                  f"tier-unstable: {j.get('tier_unstable','?')}"),
+            ("b", f"Formula disagreements:        {j.get('formula_disagreements','?')}  "
+                  "(same m/z, different formula across files)"),
+            ("b", f"Tier-unstable assignments:    {j.get('tier_unstable','?')}  "
+                  "(flip Identified <-> Candidate across files)"),
+            ("dim", "On a disagreement/flip the merge keeps the highest tier, then the "
+                    "highest match score."),
         ]
-    _text_lines(fig, head, y0=0.80, dy=0.030)
+    _text_lines(fig, head, y0=0.80, dy=0.029)
     _close(pdf, fig)
 
 
 def coverage(ctx, pdf):
     import matplotlib.pyplot as plt
     fig = plt.figure(figsize=A4)
-    fig.text(0.08, 0.965, "Coverage — assigned vs unassigned", fontsize=15,
-             weight="bold", color=INK)
-    fig.text(0.08, 0.94, "Read both by count and by signal: the unexplained pool is "
-             "large by count but small by signal.", fontsize=9, color=GREY)
+    fig.text(0.08, 0.95, "Assignment quality", fontsize=15, weight="bold", color=INK)
 
-    rc = ctx.get("role_count", {}); rs = ctx.get("role_signal", {})
-    roles = ["M0", "iso_child", "reagent", "artifact", "unexplained"]
-    cols = {"M0": "#1D9E75", "iso_child": "#9AD1BE", "reagent": "#378ADD",
-            "artifact": "#BBBBBB", "unexplained": "#D85A30"}
-    Nc = sum(rc.values()) or 1; Ns = sum(rs.values()) or 1
+    # (a) mean match score, Identified vs Candidate
+    sbt = ctx.get("score_by_tier", {})
+    tiers = [t for t in ("Identified", "Candidate") if t in sbt]
+    ax = fig.add_axes([0.12, 0.62, 0.32, 0.26])
+    ax.bar(tiers, [sbt[t] for t in tiers], color=["#1D9E75", "#E0A93B"][:len(tiers)], width=0.6)
+    for i, t in enumerate(tiers):
+        ax.text(i, sbt[t], f"{sbt[t]:.2f}", ha="center", va="bottom", fontsize=11)
+    ax.set_ylim(0, 1.05); ax.set_ylabel("mean match score")
+    ax.set_title("Match score by confidence", loc="left", fontsize=11)
 
-    # (a) role breakdown — count vs signal stacked bars
-    ax = fig.add_axes([0.10, 0.66, 0.82, 0.22])
-    left_c = left_s = 0
-    for r in roles:
-        c = _pct(rc.get(r, 0), Nc); s = _pct(rs.get(r, 0), Ns)
-        ax.barh(1, c, left=left_c, color=cols[r], edgecolor="white")
-        ax.barh(0, s, left=left_s, color=cols[r], edgecolor="white",
-                label=f"{r} ({rc.get(r,0)})")
-        if c > 5:
-            ax.text(left_c + c / 2, 1, f"{c:.0f}%", ha="center", va="center", fontsize=7.5, color="white")
-        if s > 5:
-            ax.text(left_s + s / 2, 0, f"{s:.0f}%", ha="center", va="center", fontsize=7.5, color="white")
-        left_c += c; left_s += s
-    ax.set_yticks([0, 1]); ax.set_yticklabels(["by signal", "by count"]); ax.set_xlim(0, 100)
-    ax.set_xlabel("% of peak-rows / signal (pooled over the representative files)")
-    ax.set_title("Role breakdown", loc="left", fontsize=11)
-    ax.legend(fontsize=7.5, ncol=5, loc="upper center", bbox_to_anchor=(0.5, -0.22),
-              frameon=False, columnspacing=1.0, handletextpad=0.4)
+    # (b) assignments by ion channel (how the analyte ion is formed)
+    ad = ctx.get("adduct_cat", {})
+    order = ["protonated / deprotonated", "reagent cluster", "other adduct (Na/NH4/CO3)", "other"]
+    items = [(k, ad[k]) for k in order if ad.get(k)]
+    short = {"protonated / deprotonated": "(de)protonated", "reagent cluster": "reagent\ncluster",
+             "other adduct (Na/NH4/CO3)": "other adduct\n(Na/NH4/CO3)", "other": "other"}
+    ax2 = fig.add_axes([0.56, 0.62, 0.36, 0.26])
+    ax2.bar(range(len(items)), [v for _, v in items], color="#378ADD", width=0.6)
+    for i, (_, v) in enumerate(items):
+        ax2.text(i, v, str(v), ha="center", va="bottom", fontsize=10)
+    ax2.set_xticks(range(len(items))); ax2.set_xticklabels([short.get(k, k) for k, _ in items], fontsize=8)
+    ax2.set_ylabel("M0 count"); ax2.set_title("Assignments by ion channel", loc="left", fontsize=11)
 
-    # (b) M0 tier split
-    ax2 = fig.add_axes([0.10, 0.33, 0.36, 0.15])
-    t = ctx["tiers"]; idn = t.get("Identified", 0); cn = t.get("Candidate", 0)
-    ax2.bar(["Identified", "Candidate"], [idn, cn], color=["#1D9E75", "#E0A93B"])
-    for i, v in enumerate([idn, cn]):
-        ax2.text(i, v, str(v), ha="center", va="bottom", fontsize=9)
-    ax2.set_title(f"Confidence of the {ctx['n_m0']} assignments", loc="left", fontsize=11)
-    ax2.set_ylabel("M0 count")
-
-    # (c) spectral coverage donut-ish bar
     ts = ctx.get("ts")
-    ax3 = fig.add_axes([0.56, 0.33, 0.36, 0.15])
+    idn = ctx["tiers"].get("Identified", 0); cn = ctx["tiers"].get("Candidate", 0)
+    lines = [("h", "Assigned vs unassigned"), ("gap", 0.3)]
     if ts:
-        ec = _pct(ts["expl_count"], ts["nbins"]); es = _pct(ts["expl_signal"], ts["tot_signal"])
-        ax3.barh(["by signal", "by count"], [es, ec], color="#1D9E75", label="explained")
-        ax3.barh(["by signal", "by count"], [100 - es, 100 - ec], left=[es, ec],
-                 color="#D85A30", label="unexplained")
-        for yi, val in zip([1, 0], [ec, es]):
-            ax3.text(val, yi, f" {val:.0f}%", va="center", fontsize=8)
-        ax3.set_xlim(0, 100); ax3.set_title("Spectral coverage (TS bins)", loc="left", fontsize=11)
-        ax3.legend(fontsize=7.5, loc="lower right", frameon=False)
-    else:
-        ax3.axis("off"); ax3.text(0, 0.5, "(TS not loaded)", color=GREY)
-
-    # text takeaways
-    lines = [("h", "What it means"), ("gap", 0.3)]
-    if ts:
-        lines.append(("b", f"• {_pct(ts['expl_signal'], ts['tot_signal']):.0f}% of the ion "
-                      f"signal is explained; the unexplained {ts['nbins']-ts['expl_count']} "
-                      "bins are mostly small, near-noise peaks."))
+        es = _pct(ts["expl_signal"], ts["tot_signal"])
+        lines += [
+            ("b", f"• Explained: {_pct(ts['expl_count'], ts['nbins']):.0f}% of m/z bins, "
+                  f"{es:.0f}% of the ion signal."),
+            ("b", f"• Unexplained: {ts['nbins'] - ts['expl_count']} bins — only {100 - es:.0f}% "
+                  "of signal (dim, near-noise peaks)."),
+        ]
     lines += [
-        ("b", f"• {ctx['tiers'].get('Identified',0)} of {ctx['n_m0']} assignments are "
-              f"high-confidence (Identified); the rest Candidate."),
-        ("b", "• 'explained' = M0 compounds + their isotope satellites + reagent + "
-              "artifact peaks (not just M0)."),
+        ("b", f"• {idn} Identified vs {cn} Candidate. Match score = the server "
+              "isotope-scored compound match (0-1)."),
+        ("b", "• Ion channel: (de)protonated = bare analyte ion; reagent cluster = adduct"),
+        ("b", "  with the reagent ([M+Br]- etc.); other = Na/NH4/CO3 adduct."),
     ]
-    _text_lines(fig, lines, y0=0.22, dy=0.028)
+    _text_lines(fig, lines, y0=0.50, dy=0.030)
     _close(pdf, fig)
 
 
 def composition(ctx, pdf):
     if "vk" in ctx["fig"]:
-        _image_page(pdf, ctx["fig"]["vk"],
-                    f"{ctx['label']} — Van Krevelen (all assigned peaks, by composition)")
+        _image_page(pdf, ctx["fig"]["vk"], "")          # figure carries its own title
     import matplotlib.pyplot as plt
     fig = plt.figure(figsize=A4)
     fig.text(0.08, 0.93, "Composition of the assigned peaks", fontsize=15, weight="bold", color=INK)
@@ -354,8 +363,7 @@ def composition(ctx, pdf):
 
 def families(ctx, pdf):
     for p in ctx["fig"].get("changing", []):
-        _image_page(pdf, p, f"{ctx['label']} — co-varying analyte families (changing peaks)",
-                    native=True)
+        _image_page(pdf, p, "", native=True)            # figure carries its own title
     cc = ctx.get("changing_csv")
     if cc is None or not len(cc):
         return
@@ -364,28 +372,29 @@ def families(ctx, pdf):
     fig = plt.figure(figsize=A4)
     fig.text(0.08, 0.93, "Analyte families (temporal clusters)", fontsize=15, weight="bold", color=INK)
     sizes = cc.groupby("cluster").size().sort_values(ascending=False)
-    lines = [("h", "Largest co-varying clusters"), ("gap", 0.3),
-             ("m", "  cluster   n   median O/C   example members"),
+    big = [c for c in sizes.index if sizes[c] >= 3]      # only the PLOTTED clusters
+    singletons = int((sizes < 3).sum())
+    lines = [("h", f"Co-varying clusters ({len(big)} with >=3 members)"), ("gap", 0.3),
+             ("m", "  cluster   n   median O/C   top members (by intensity)"),
              ("gap", 0.2)]
-    for cid in sizes.index[:12]:
+    for cid in big:
         g = cc[cc.cluster == cid]
-        ocs = []
-        for f in g["neutral_formula"]:
-            cnt = C.parse_formula(str(f)); nc = cnt.get("C", 0)
-            if nc:
-                ocs.append(cnt.get("O", 0) / nc)
+        ocs = [cnt.get("O", 0) / cnt.get("C", 1) for cnt in
+               (C.parse_formula(str(f)) for f in g["neutral_formula"]) if cnt.get("C", 0)]
         oc = np.median(ocs) if ocs else float("nan")
-        ex = ", ".join(g.sort_values("median_cps", ascending=False)["neutral_formula"].head(4))
-        lines.append(("m", f"  {int(cid):>5}   {len(g):>2}     {oc:>5.2f}      {ex}"))
+        top = ", ".join(g.sort_values("median_cps", ascending=False)["neutral_formula"].head(4))
+        lines.append(("m", f"  {int(cid):>5}   {len(g):>2}     {oc:>5.2f}      {top}"))
+    if singletons:
+        lines += [("gap", 0.5),
+                  ("dim", f"+ {singletons} singleton / <3-member peaks — shown together in the "
+                          "last 'remaining peaks' panel of the changing-cluster figure.")]
     _text_lines(fig, lines, y0=0.86, dy=0.026, size=9)
     _close(pdf, fig)
 
 
 def clusters(ctx, pdf):
-    for p in ctx["fig"].get("flat", []):
-        _image_page(pdf, p, f"{ctx['label']} — flat background (RAW intensity bands)", native=True)
-    for p in ctx["fig"].get("unassigned", []):
-        _image_page(pdf, p, f"{ctx['label']} — unexplained-peak clusters (RAW intensity)", native=True)
+    for p in ctx["fig"].get("flat", []) + ctx["fig"].get("unassigned", []):
+        _image_page(pdf, p, "", native=True)            # figures carry their own titles
 
 
 def methods(ctx, pdf):
@@ -401,6 +410,13 @@ def methods(ctx, pdf):
         ("b", "  (match_compounds), isotope-envelope completion, calibrated tiering."),
         ("b", "• Clusters: TIC/reagent-normalised log-correlation, complete-linkage at r>0.6"),
         ("b", "  on the full-batch time series (signed distance keeps anti-phase apart)."),
+        ("gap", 1),
+        ("h", "Peak roles"), ("gap", 0.3),
+        ("b", "• M0 = an assigned compound's monoisotopic peak (the identification)."),
+        ("b", "• iso_child = its isotope satellite (13C / 81Br / 37Cl ...)."),
+        ("b", "• reagent = reagent-ion / reagent-cluster peaks (e.g. Br3-)."),
+        ("b", "• artifact = instrument peaks (FT ringing / sidelobes of a bright peak)."),
+        ("b", "• unexplained = no confident formula."),
         ("gap", 1),
         ("h", "Caveats"), ("gap", 0.3),
         ("b", "• Report coverage both by count and by signal — they differ a lot."),
