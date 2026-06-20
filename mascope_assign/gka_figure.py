@@ -45,8 +45,6 @@ FAMILIES: list[tuple[str, str, list[str], str, str | None]] = [
     ("fluorinated", "CF2",     ["CF2"],                            "#D4537E", "F"),
 ]
 
-MIN_ELEMENT = 3       # show a contaminant (element) panel at >= this many element-bearing peaks
-
 
 @dataclass
 class Series:
@@ -122,15 +120,21 @@ def element_members(formula_mass: dict[str, float], element: str) -> dict[str, f
 
 
 def present_families(formula_mass: dict[str, float], *, min_len: int = 4,
-                     min_element: int = MIN_ELEMENT) -> list[tuple]:
-    """The families worth a panel: homology families with a >= min_len ladder, plus
-    contaminant (element) families with >= min_element element-bearing peaks — so a
-    siloxane/PFAS family shows up even when it never forms a 4-rung ladder."""
+                     contam_min_len: int = 2) -> list[tuple]:
+    """The families worth a panel: a family is shown only if it forms a homologous
+    SERIES (ladder). Organic families need a >= min_len ladder; contaminant (element)
+    families need only a SHORT >= contam_min_len ladder under their base unit (and are
+    then highlighted by element). A scattered element-bearing set with NO series —
+    e.g. assorted fluorinated mass-fits that never step by CF2 — is NOT plotted
+    (user 2026-06-20: "if there is no series shouldn't plot in GKA")."""
     out = []
     for fam in FAMILIES:
         label, base, units, col, element = fam
-        keep = (len(element_members(formula_mass, element)) >= min_element if element
-                else bool(detect_series(formula_mass, units=[base], min_len=min_len)))
+        if element:
+            keep = bool(G.find_homolog_series(element_members(formula_mass, element),
+                                              base, min_len=contam_min_len))
+        else:
+            keep = bool(detect_series(formula_mass, units=[base], min_len=min_len))
         if keep:
             out.append(fam)
     return out
@@ -257,7 +261,7 @@ def render_gka(ledger: pd.DataFrame, path: str, *, min_len: int = 4,
     ax2.tick_params(labelsize=7.5)
 
     sub = ("Each panel flattens its family's homologous series into horizontal ladders; "
-           "Si/F contaminants shown by element")
+           "a family is shown only if it forms a series (Si/F highlighted by element)")
     fig.text(0.085, 1 - 0.40 / H, title or "GKA homologous-series findings",
              fontsize=12.5, weight="bold", ha="left", color=INK)
     fig.text(0.085, 1 - 0.62 / H, sub, fontsize=7.6, ha="left", color=GREY)

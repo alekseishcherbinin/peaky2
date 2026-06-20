@@ -21,17 +21,18 @@ def check(name, cond, detail=""):
 # a clean CH2 ladder + a separate O-addition ladder, plus a lone peak
 CH2_CHAIN = ["C5H10O2", "C6H12O2", "C7H14O2", "C8H16O2", "C9H18O2"]
 O_CHAIN = ["C10H16O2", "C10H16O3", "C10H16O4", "C10H16O5"]
-# 3 Si-bearing neutrals; longest C2H6OSi run is only 2 (D3->D4) -> NO >=4 ladder,
-# yet a contaminant family should still surface (the reported siloxane gap).
+# Si: D3->D4 IS a 2-rung C2H6OSi ladder (short series) -> siloxane shown.
+# F: assorted fluorinated, NO CF2 step between them -> 0 series -> NOT shown.
 SI = ["C6H18O3Si3", "C8H24O4Si4", "C5H11NO3Si"]
+FL = ["C3H2F6O", "C12H12F12", "C14H12F8"]
 LEDGER = pd.DataFrame(
-    [dict(role="M0", neutral_formula=f) for f in CH2_CHAIN + O_CHAIN + SI]
+    [dict(role="M0", neutral_formula=f) for f in CH2_CHAIN + O_CHAIN + SI + FL]
     + [dict(role="iso_child", neutral_formula="C5H10O2")]   # must be ignored (not M0)
 )
 
 fmass = GF._neutral_masses(LEDGER)
 check("_neutral_masses: drops non-M0 rows / dedups",
-      len(fmass) == len(set(CH2_CHAIN + O_CHAIN + SI)), len(fmass))
+      len(fmass) == len(set(CH2_CHAIN + O_CHAIN + SI + FL)), len(fmass))
 
 # --- series detection ------------------------------------------------------
 ch2 = [s for s in GF.detect_series(fmass, units=["CH2"], min_len=3)]
@@ -67,18 +68,21 @@ check("family_summary: oxidation family present", byname["oxidation"]["n_series"
 check("family_summary: every FAMILY represented",
       set(byname) == {lab for lab, *_ in GF.FAMILIES}, set(byname))
 
-# --- contaminant (element) families: shown on element presence, not on a ladder
-check("element_members: collects the Si-bearing neutrals",
-      set(GF.element_members(fmass, "Si")) == set(SI), GF.element_members(fmass, "Si"))
-check("detect_series: the Si neutrals form NO >=4 C2H6OSi ladder",
-      GF.detect_series(fmass, units=["C2H6OSi"], min_len=4) == [])
+# --- contaminant (element) families: shown ONLY if they form a series (ladder) --
+check("element_members: collects the Si- and F-bearing neutrals",
+      set(GF.element_members(fmass, "Si")) == set(SI)
+      and set(GF.element_members(fmass, "F")) == set(FL), GF.element_members(fmass, "F"))
+check("detect_series: Si has a short (2-rung) C2H6OSi ladder but no >=4 one",
+      GF.detect_series(fmass, units=["C2H6OSi"], min_len=4) == []
+      and len(__import__("mascope_assign.series_gka", fromlist=["find_homolog_series"])
+              .find_homolog_series(GF.element_members(fmass, "Si"), "C2H6OSi", min_len=2)) >= 1)
 shown = [f[0] for f in GF.present_families(fmass)]
-check("present_families: siloxane SHOWS despite no >=4 ladder (the reported gap)",
+check("present_families: siloxane SHOWS on its short C2H6OSi ladder (D3->D4)",
       "siloxane" in shown, shown)
-check("present_families: organic family still needs its ladder; absent F is dropped",
-      "alkyl" in shown and "oxidation" in shown and "fluorinated" not in shown, shown)
-check("present_families: a contaminant below MIN_ELEMENT is NOT shown",
-      "siloxane" not in [f[0] for f in GF.present_families(fmass, min_element=99)])
+check("present_families: fluorinated NOT shown — F-bearing present but NO CF2 series",
+      "fluorinated" not in shown and len(GF.element_members(fmass, "F")) >= 3, shown)
+check("present_families: organic families still need their ladder",
+      "alkyl" in shown and "oxidation" in shown, shown)
 
 # --- render smoke test -----------------------------------------------------
 with tempfile.TemporaryDirectory() as d:

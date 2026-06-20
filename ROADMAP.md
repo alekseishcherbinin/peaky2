@@ -118,6 +118,14 @@ that clears after 15-30 min of NO traffic (polling EXTENDS it). For a blocked li
   peaks exist; `_panel` highlights EVERY Si/F-bearing peak + connects whatever short ladders exist
   (min_len 2). `element_members`/`present_families` exported + tested. Ur now shows siloxane (16, 3 ladders);
   Br shows siloxane + fluorinated (12 F). Organic families unchanged (still need a ≥min_len ladder).
+  **v7 (user 2026-06-20 — "if there is no series shouldn't plot in GKA"):** REVERSED the pure
+  element rule — a contaminant family is now shown ONLY if it forms a series (`present_families`:
+  contaminant needs a ≥`contam_min_len`=2 ladder under its base, not just ≥MIN_ELEMENT element-bearing
+  peaks; MIN_ELEMENT removed). So Br's 12 F-bearing (assorted mass-fits, 0 CF2 ladders) NO LONGER plot
+  (they scattered, confusing); siloxane stays (it has short C2H6OSi ladders: Ur 3, Br 2). Context: F
+  has NO isotope (19F 100%), so high-F formulas are pure mass-coincidence-prone fits — scattered F with
+  no CF2 series shouldn't masquerade as a fluorinated family. The F that IS credible gets confidence
+  from Br/Cl/S in the ion, not F. test_gka_figure 18.
   [M+NH4]+ as [M+H]+ of the +NH3 amine (SAME ion) UNLESS the NH4 trace co-varies (r>=0.7) with the
   [M+H]+/urea parent OR the amine is valence-impossible (forced). Wired in assign_batch (merged level).
 - `residual.py` pass4.A FIX: F enabled only for carbon-CLAMPED pairs (F×wide-C grid was a CPU
