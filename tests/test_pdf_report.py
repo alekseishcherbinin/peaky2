@@ -28,6 +28,7 @@ with tempfile.TemporaryDirectory() as d:
         dict(mz=183.0, neutral_formula="C9H10N2O", adduct="[M+H]+", tier="Candidate", ion_score=0.6, n_files=2, formula_agree=True),
         dict(mz=223.06, neutral_formula="C6H18O3Si3", adduct="[M+H]+", tier="Candidate", ion_score=0.5, n_files=1, formula_agree=True),
         dict(mz=247.0, neutral_formula="C3H2F6O", adduct="[M+Br]-", tier="Identified", ion_score=0.8, n_files=4, formula_agree=True),
+        dict(mz=400.0, neutral_formula="C9H12N4O12", adduct="[M+Na]+", tier="Candidate", ion_score=0.94, n_files=1, formula_agree=True),  # N-monster, flagged
     ]).to_csv(f"{d}/merged_ledger.csv", index=False)
     # one per-file ledger with roles (drives the role breakdown)
     pd.DataFrame([
@@ -41,7 +42,7 @@ with tempfile.TemporaryDirectory() as d:
                   "median_cps": [9000, 4000, 2000]}).to_csv(f"{d}/clusters_changing_Ur.csv", index=False)
 
     ctx = R.load_context(d, tag="Ur", label="Ur⁺ CIMS")
-    check("load_context: merged loaded", ctx["n_m0"] == 5, ctx.get("n_m0"))
+    check("load_context: merged loaded", ctx["n_m0"] == 6, ctx.get("n_m0"))
     check("load_context: tiers counted", ctx["tiers"].get("Identified") == 2, ctx["tiers"])
     check("load_context: composition is CHO/CHON/CHOS backbone",
           set(ctx["composition"]) <= {"CHO", "CHON", "CHOS"}, ctx["composition"])
@@ -67,10 +68,16 @@ with tempfile.TemporaryDirectory() as d:
     check("load_context: top species by signal carries the bright CHO",
           ctx.get("top_species") and ctx["top_species"][0]["neutral_formula"] == "C10H16O2",
           ctx.get("top_species"))
-    # findings section builds without an event TS (degrades gracefully)
+    check("load_context: polarity detected positive (NH4/[M+H]+ present)",
+          ctx.get("positive") is True, ctx.get("positive"))
+    check("load_context: plausibility flags the Candidate N-monster only",
+          [f["neutral_formula"] for f in ctx.get("flagged", [])] == ["C9H12N4O12"],
+          ctx.get("flagged"))
+    # findings + scrutiny sections build (degrade gracefully without an event TS)
     out_f = R.build(d, tag="Ur", label="Ur⁺ CIMS", out_pdf=f"{d}/rf.pdf",
-                    sections=[R.findings])
-    check("build: findings section standalone OK", os.path.exists(out_f) and os.path.getsize(out_f) > 1500)
+                    sections=[R.findings, R.scrutiny])
+    check("build: findings+scrutiny sections standalone OK",
+          os.path.exists(out_f) and os.path.getsize(out_f) > 1500)
 
     out = R.build(d, tag="Ur", label="Ur⁺ CIMS", generated="2026-01-01")
     check("build: PDF created", os.path.exists(out), out)

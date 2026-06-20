@@ -142,6 +142,11 @@ def load_context(out_dir: str, *, tag: str, label: str, ts_path: str | None = No
     ctx["comp_asg"], ctx["comp_collapsed"], ctx["n_collapsed"] = CMP.collapsed_composition(merged)
     ctx["top_species"] = CMP.top_species_by_signal(merged, nsig, n=8)
     ctx["oligomers"] = CMP.oligomer_flag(merged)
+    # polarity (gates positive-only messaging: the amine re-read, the shadow note)
+    # + chemical-plausibility QC of the assignments
+    ctx["positive"] = any(str(k).rstrip().endswith("+") for k in ctx.get("adduct_counts", {}))
+    from . import plausibility as PL
+    ctx["flagged"] = PL.scan(merged, polarity=("+" if ctx["positive"] else "-"))
     # single source of truth for "formula disagreements": the merged ledger's own
     # formula_agree column (the artifact the report publishes), with a denominator
     # — not the separate jitter pass, which clusters differently and prints a
@@ -429,9 +434,12 @@ def findings(ctx, pdf):
         cc = ctx.get("comp_asg", {}); nn = ctx.get("n_neutrals", 1)
         cho = scf.get("CHO", 0) * 100; chon = scf.get("CHON", 0) * 100
         lines += [("b", f"• By signal the assigned chemistry is {cho:.0f}% CHO / {chon:.0f}% CHON"
-                        f" — vs {_pct(cc.get('CHON', 0), nn):.0f}% CHON by compound count"),
-                  ("b", "  (the count is inflated by mass-degenerate ammonium/amine re-reads; "
-                        "see Composition).")]
+                        f" — vs {_pct(cc.get('CHON', 0), nn):.0f}% CHON by compound count")]
+        if ctx.get("positive"):     # the CHON count inflation is the amine re-read (positive only)
+            lines += [("b", "  (the count is inflated by mass-degenerate ammonium/amine re-reads; "
+                            "see Composition).")]
+        else:
+            lines += [("b", "  (a few bright CHO species carry most of the signal).")]
     if top:
         lines += [("gap", 0.6), ("h", "Top species by signal"), ("gap", 0.25),
                   ("m", "   share   class   neutral")]
@@ -566,7 +574,7 @@ def composition(ctx, pdf):
             if kl in scf:
                 lines.append(("m", f"   {kl:6s} {scf[kl]*100:>3.0f}% of assigned signal"))
     sh = ctx.get("shadow", {}); coll = ctx.get("comp_collapsed", {})
-    if sh.get("n_shadowed"):
+    if sh.get("n_shadowed") and ctx.get("positive"):    # the re-read is positive urea-CIMS only
         lines += [("gap", 0.8),
                   ("dim", f"Note: {sh['n_shadowed']} CHON neutrals share an exact NH3-shifted CHO twin that is"),
                   ("dim", "also assigned — mass-degenerate [M+NH4]+/[M+H]+ pairs from the amine re-read,"),
@@ -586,6 +594,33 @@ def composition(ctx, pdf):
     _close(pdf, fig)
     if "vk" in ctx["fig"]:
         _image_page(pdf, ctx["fig"]["vk"], "")          # figure carries its own title
+
+
+def scrutiny(ctx, pdf):
+    """Assignments flagged for chemical-plausibility scrutiny (Candidate-tier only):
+    high-heteroatom mass coincidences, implausibly carbon-rich skeletons, or a
+    halogen in a positive-mode neutral. Flagged, NOT removed — listed so a reader
+    can discount them. Renders only when something is flagged."""
+    fl = ctx.get("flagged", [])
+    if not fl:
+        return
+    import matplotlib.pyplot as plt
+    fig = plt.figure(figsize=A4)
+    fig.text(0.08, 0.95, "Assignments flagged for scrutiny", fontsize=15, weight="bold", color=INK)
+    lines = [("dim", f"{len(fl)} Candidate-tier neutral(s) whose formula looks more like a mass"),
+             ("dim", "coincidence than a real molecule (many heteroatoms, very low H/C, or a"),
+             ("dim", "wrong-mode halogen). Flagged for review, NOT removed; Identified (isotope-"),
+             ("dim", "scored) assignments are never flagged."),
+             ("gap", 0.8),
+             ("m", "   score   neutral                  why"),
+             ("gap", 0.2)]
+    for d in fl[:40]:
+        sc = f"{d['ion_score']:.2f}" if d.get("ion_score") is not None else "  -  "
+        lines.append(("m", f"   {sc}   {d['neutral_formula']:22s}  {d['reason']}"))
+    if len(fl) > 40:
+        lines.append(("dim", f"… and {len(fl) - 40} more."))
+    _text_lines(fig, lines, y0=0.88, dy=0.025, size=8.5)
+    _close(pdf, fig)
 
 
 def gka(ctx, pdf):
@@ -698,7 +733,7 @@ def methods(ctx, pdf):
     _close(pdf, fig)
 
 
-SECTIONS = [cover, findings, coverage, composition, gka, families, changers, clusters, methods]
+SECTIONS = [cover, findings, coverage, composition, scrutiny, gka, families, changers, clusters, methods]
 
 
 def build(out_dir: str, *, tag: str, label: str, ts_path: str | None = None,
