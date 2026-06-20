@@ -49,10 +49,19 @@ no live re-run — regenerated from the canonical orange-assign/<tag>/ ledgers v
   **The live `match_compounds` assignment is the ONLY non-deterministic part of a from-scratch run**
   (server-side; ±2 amine re-reads between two live runs) — all local code is deterministic given inputs.
 - SECTIONS now `[cover, findings, coverage, composition, scrutiny, gka, families, changers, clusters,
-  methods]`. Final reports: `~/mascope-output/peaky/Orange-peeling-{Ur,Br}-CIMS_2026-06-20T1136*Z/`
-  (git ac08a33). Full suite green (26 test files). **STILL NOT folded:** enrichment-colored VK
+  methods]`. Full suite green (26 test files). **STILL NOT folded:** enrichment-colored VK
   (scratch); the offsets_ppm=null in batch_summary (IO.estimate_offset returns None — jitter_summary
   has the real per-file offsets; live-path only, low priority).
+- ROUND 5 (commits 96773c4 + f423de6, user-spotted from screenshots). (a) `render_changers` (the
+  "Large standalone changes" section) rebuilt for FEW channels: was a native-sized strip with empty
+  columns + colliding log y-tick labels; now **A4-PORTRAIT page(s)** like the other cluster figures
+  (out_prefix + paginated, returns list; pdf_report.changers embeds fit-to-A4 not native; driver passes
+  the prefix). Decade-snapped log y (major ticks only), title sized to fit. **Every report page is now
+  595x842pt (A4)** — verified. (b) default PDF filename embeds the Report ID → `report_<run_id>.pdf`.
+  test_cluster 41 (A4-portrait assertion). Final reports: `~/mascope-output/peaky/Orange-peeling-{Ur,
+  Br}-CIMS_2026-06-20T131{003,052}Z/` (git f423de6). NB a PARALLEL session added scratch
+  `~/mascope-output/gka-iter/accretion_prototype.py` + an accretion-VK revive note in the memory — left
+  untouched (separate workstream).
 
 **Data path:** SDK-over-shell, creds at `~/.mascope/.env`; `io_mascope.connect()` reads the
 live file (the `mcp__mascope__*` tools hold a stale token). **<server> is behind a Cloudflare
