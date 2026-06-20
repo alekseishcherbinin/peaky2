@@ -98,6 +98,10 @@ with tempfile.TemporaryDirectory() as d:
     out3 = R.build(d, tag="Ur", label="Ur⁺ CIMS", generated="2026-06-20 14:35",
                    run_id=RID, out_pdf=f"{d}/r3.pdf")
     check("build with run_id + timestamped generated -> PDF", os.path.exists(out3))
+    # default PDF filename carries the Report ID (self-identifying outside its folder)
+    out4 = R.build(d, tag="Ur", label="Ur⁺ CIMS", run_id=RID)
+    check("default PDF filename includes the Report ID", os.path.basename(out4) == f"report_{RID}.pdf",
+          os.path.basename(out4))
     try:
         import fitz  # PyMuPDF — verify the cover text if available
         cover = fitz.open(out3)[0].get_text()

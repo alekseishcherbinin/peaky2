@@ -747,7 +747,11 @@ def build(out_dir: str, *, tag: str, label: str, ts_path: str | None = None,
     from matplotlib.backends.backend_pdf import PdfPages
     ctx = load_context(out_dir, tag=tag, label=label, ts_path=ts_path,
                        generated=generated, batch_name=batch_name, run_id=run_id)
-    out_pdf = out_pdf or os.path.join(os.path.expanduser(out_dir), f"report_{tag}.pdf")
+    if out_pdf is None:
+        # name the PDF with the Report ID when we have one, so the file is
+        # self-identifying even when moved out of its run folder.
+        fname = f"report_{run_id}.pdf" if run_id else f"report_{tag}.pdf"
+        out_pdf = os.path.join(os.path.expanduser(out_dir), fname)
     with PdfPages(out_pdf) as pdf:
         for section in sections:
             try:

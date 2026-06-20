@@ -567,28 +567,51 @@ def render_changers(items, traces_raw, grid, out, item_label, *, ncol=4, cap=48,
                     title="", dpi=150):
     """Small-multiples of the big standalone changers — one mini-plot per channel
     (raw cps, log y) titled `formula+adduct  Nx · peak hour`, so each interesting
-    trace is shown on its own. `items` = big_changers() output. Returns the path."""
+    trace is shown on its own. `items` = big_changers() output. Returns the path.
+
+    The column count is capped at the number of channels (so a single changer is a
+    clean square panel, not a wide strip with empty cells), and the log y-axis snaps
+    to whole decades with only major ticks labelled — a near-flat trace otherwise
+    crams colliding 2..9x10^n minor labels into a short panel."""
+    import math
+
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    import matplotlib.ticker as mticker
     items = list(items)[:cap]
     if not items:
         return None
+    ncol = max(1, min(ncol, len(items)))             # no empty trailing columns
     nrow = (len(items) + ncol - 1) // ncol
-    fig, axes = plt.subplots(nrow, ncol, figsize=(3.0 * ncol, 1.7 * nrow), squeeze=False)
+    PW, PH = 3.7, 2.5                                 # per-panel inches (legible, square-ish)
+    fig, axes = plt.subplots(nrow, ncol, figsize=(PW * ncol, PH * nrow), squeeze=False)
     for i, (c, fold, ph) in enumerate(items):
         ax = axes[i // ncol][i % ncol]
         y = traces_raw[c].to_numpy(float)
-        ax.plot(grid, np.where(y > 0, y, np.nan), color="#1D9E75", lw=1.1, marker="o", ms=2)
+        yp = np.where(y > 0, y, np.nan)
+        ax.plot(grid, yp, color="#1D9E75", lw=1.2, marker="o", ms=2.5)
         ax.set_yscale("log"); ax.set_xlim(0, float(grid[-1]))
+        finite = yp[np.isfinite(yp)]
+        if finite.size:                              # snap y-limits to whole decades
+            lo, hi = float(np.nanmin(finite)), float(np.nanmax(finite))
+            c0 = 10.0 ** math.floor(math.log10(lo)) if lo > 0 else 1.0
+            c1 = 10.0 ** math.ceil(math.log10(hi)) if hi > 0 else c0 * 10
+            ax.set_ylim(c0, max(c1, c0 * 10))
+        ax.yaxis.set_major_locator(mticker.LogLocator(base=10, numticks=6))
+        ax.yaxis.set_minor_formatter(mticker.NullFormatter())   # kill colliding 2..9x labels
         ax.grid(alpha=0.2, which="both"); ax.tick_params(labelsize=7)
         ax.set_title(f"{item_label(c)}   {fold:.0f}× · h{ph:.1f}", fontsize=7.5, loc="left")
         if i // ncol == nrow - 1:
             ax.set_xlabel("hour (UTC)", fontsize=7)
     for j in range(len(items), nrow * ncol):
         axes[j // ncol][j % ncol].axis("off")
-    fig.suptitle(title, fontsize=12, y=1 - 0.15 / (1.7 * nrow), x=0.02, ha="left")
-    fig.tight_layout(rect=[0, 0, 1, 1 - 0.5 / (1.7 * nrow)])
+    # size the suptitle to the FIGURE WIDTH so it never clips on a narrow (few-panel)
+    # figure — a single changer makes a ~3.7in-wide page the full 11pt title overruns.
+    figw = PW * ncol
+    fs = max(7.0, min(11.0, 0.92 * figw * 72.0 / (0.58 * max(len(title), 1))))
+    fig.suptitle(title, fontsize=fs, y=1 - 0.10 / (PH * nrow), x=0.02, ha="left")
+    fig.tight_layout(rect=[0, 0, 1, 1 - 0.42 / (PH * nrow)])
     fig.savefig(out, dpi=dpi); plt.close(fig)
     return out
 
