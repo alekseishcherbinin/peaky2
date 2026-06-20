@@ -31,6 +31,18 @@ that clears after 15-30 min of NO traffic (polling EXTENDS it). For a blocked li
   CHANGING set is already cv≥0.30 so it IS the varying side (unchanged). `FLAT_CV` is the tunable knob
   (unassigned median cv 0.16, so 0.30 is aggressive — keeps only clear movers; lower it to keep weak
   coherent families). Driver also nukes stale `clusters_*_p*.png` first (shorter run can't orphan pages).
+  **SHAPE-CLUSTER REDESIGN (user 2026-06-20 — "varying clusters in the flat panel"):** the per-trace
+  cv/transient gate CAN'T see coherence (a synchronized burst barely moves a single trace's cv), so it
+  left real co-varying burst families in the flat bucket. NEW assigned path (run_clusters CHANGING):
+  cluster ALL bright organic ion-channels (no cv gate) on **RAW** log-correlation — NOT reagent-norm,
+  which made the raw-flat background all 'rise' (reagent decays) and collapse into ONE spurious 566-member
+  family — then `cluster.merge_similar(Lg, lab, big, merge_r=MERGE_R=0.85, link=MERGE_LINK='complete')`
+  folds near-identical-shape clusters (COMPLETE linkage on centroids; average/single CHAIN distinct
+  shapes into a blob). The non-clustering remainder + Si = the flat panel. Ur: 75 raw→60 merged families
+  covering 673, flat panel 924→567 and now GENUINELY flat (bursts at h0.7-1.5 are their own families;
+  big clusters are the h0.2 decay). Cost: ~18 cluster pages (user wanted all signal dissected). The
+  per-trace `trace_varies`/`trace_dynamic_range`/`split_varying`/`FLAT_CV`/`PEAK_RANGE` now serve only
+  the UNASSIGNED path. `merge_similar` test added (cluster 29).
 - **PER-ION CLUSTERING + CHANNEL-AGREEMENT QC (NEW, user 2026-06-20):** assigned analytes now cluster
   PER ION CHANNEL (formula+adduct), NOT the per-neutral SUM, because a neutral's channels often diverge
   in time — `analyte_viz.channel_agreement` showed **Ur 44% / Br 22%** of multi-channel neutrals have

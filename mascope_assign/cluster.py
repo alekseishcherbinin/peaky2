@@ -28,9 +28,12 @@ from scipy.spatial.distance import squareform
 __version__ = "0.1.0"
 
 CHANGING = 0.30          # cv at/above which a trace is "changing"
-FLAT_CV = CHANGING       # cv BELOW which a trace is "flat / non-varying" and is
-                         # bunched out of correlation clustering (the gate knob —
-                         # lower it to keep weak-but-coherent families as clusters)
+FLAT_CV = CHANGING       # cv BELOW which a trace counts as flat (the sustained-
+                         # variation half of the gate; lower it to keep weak families)
+SMOOTH_W = 3             # smoothing window for the transient-burst detector
+PEAK_RANGE = 1.7         # smoothed max/median at/above which a trace has a coherent
+                         # transient burst -> clustered even when its cv < FLAT_CV
+                         # (a brief spike barely moves cv; this catches it)
 DIST_T = 0.40            # 1-r cut: r > 0.6 merges
 MIN_POINTS = 8           # finite trace points needed to correlate
 MIN_MEMBERS = 3          # smallest reported cluster
@@ -86,8 +89,8 @@ def cluster(cm: pd.DataFrame, *, dist_t=DIST_T, link=LINK, min_members=MIN_MEMBE
 
 def trace_cv(traces: pd.DataFrame, col) -> float:
     """Coefficient of variation (std/mean) of a trace over its finite positive
-    points. 0.0 if the trace is empty/flat-at-zero. This is the 'does it vary'
-    metric — the same one the driver uses to split changing vs flat analytes."""
+    points. 0.0 if the trace is empty/flat-at-zero. Catches SUSTAINED variation
+    but is blind to a brief spike (1-2 bins barely move std/mean)."""
     if col not in traces:
         return 0.0
     tr = pd.to_numeric(traces[col], errors="coerce").to_numpy()
@@ -96,16 +99,81 @@ def trace_cv(traces: pd.DataFrame, col) -> float:
     return float(tr.std() / m) if m > 0 else 0.0
 
 
-def split_varying(traces: pd.DataFrame, cols, *, cv_min=FLAT_CV):
-    """Partition `cols` into (varying, flat) by trace CV. A flat trace (cv < cv_min)
-    has no reliable SHAPE — its pairwise correlation with anything is dominated by
-    noise, so flat traces spuriously shatter into many tiny clusters. Pull them out
-    BEFORE correlation clustering and bunch them into one 'flat / non-varying' group
-    instead. Returns (varying, flat) preserving input order, deduped."""
+def trace_dynamic_range(traces: pd.DataFrame, col, *, smooth_w=SMOOTH_W) -> float:
+    """Smoothed max / median of a trace — sensitive to a coherent TRANSIENT burst
+    that the global CV misses. Smoothing first rejects single-bin noise spikes (only
+    a multi-bin excursion survives), so a real synchronized burst scores high while
+    jitter stays ~1. 1.0 for a dead-flat or empty trace."""
+    if col not in traces:
+        return 0.0
+    ys = smooth(pd.to_numeric(traces[col], errors="coerce").to_numpy(), smooth_w)
+    pos = ys[np.isfinite(ys) & (ys > 0)]
+    if not len(pos):
+        return 0.0
+    med = np.median(pos)
+    return float(np.max(pos) / med) if med > 0 else 0.0
+
+
+def trace_varies(traces: pd.DataFrame, col, *, cv_min=FLAT_CV, range_min=PEAK_RANGE,
+                 smooth_w=SMOOTH_W) -> bool:
+    """A trace gets correlation-clustered (vs bunched as flat) if it has SUSTAINED
+    variation (cv >= cv_min) OR a coherent TRANSIENT burst (smoothed max/median >=
+    range_min). CV alone left real co-varying burst families in the flat bucket — a
+    brief synchronized spike barely changes std/mean. The clustering's r>0.6 /
+    >=3-member rule then filters any noise this lets back in."""
+    return (trace_cv(traces, col) >= cv_min
+            or trace_dynamic_range(traces, col, smooth_w=smooth_w) >= range_min)
+
+
+def split_varying(traces: pd.DataFrame, cols, *, cv_min=FLAT_CV, range_min=PEAK_RANGE,
+                  smooth_w=SMOOTH_W):
+    """Partition `cols` into (varying, flat). A flat trace has no reliable SHAPE
+    (neither sustained variation nor a transient burst) — its pairwise correlation
+    is noise, so flat traces spuriously shatter into tiny clusters. Pull them out
+    BEFORE clustering and bunch them. Returns (varying, flat), order-preserving."""
     varying, flat = [], []
     for c in dict.fromkeys(cols):
-        (varying if trace_cv(traces, c) >= cv_min else flat).append(c)
+        (varying if trace_varies(traces, c, cv_min=cv_min, range_min=range_min,
+                                 smooth_w=smooth_w) else flat).append(c)
     return varying, flat
+
+
+MERGE_R = 0.85           # merge clusters whose MEAN traces correlate at/above this
+MERGE_LINK = "complete"  # COMPLETE linkage on the centroids — average/single chain
+                         # distinct shapes into one blob (the very thing the primary
+                         # clustering uses complete linkage to avoid)
+
+
+def merge_similar(traces: pd.DataFrame, lab: pd.Series, big, *, merge_r=MERGE_R,
+                  link=MERGE_LINK, min_members=MIN_MEMBERS):
+    """Second-level merge: collapse clusters whose MEAN traces are near-identical
+    (centroid correlation >= merge_r) into one. Clustering a decay-dominated batch
+    on shape over-splits the dominant shape into many near-duplicate clusters (and
+    leaves similar small clusters); this folds those together while keeping
+    genuinely distinct families (e.g. off-decay bursts) apart.
+
+    `traces` = the (log / normalised) per-item trace frame used for correlation
+    (index = time bins, columns = items). Returns (new_lab, new_big), merged-cluster
+    ids in a namespace disjoint from the un-merged singleton ids."""
+    big = list(big)
+    if len(big) < 2:
+        return lab, big
+    cents = {c: traces[[x for x in lab.index if int(lab[x]) == c]].mean(axis=1) for c in big}
+    cc = pd.DataFrame(cents).corr()
+    dist = (1 - cc.fillna(0)).values.copy()
+    np.fill_diagonal(dist, 0.0); dist = (dist + dist.T) / 2
+    Z = linkage(squareform(dist, checks=False), method=link)
+    grp = pd.Series(fcluster(Z, t=1.0 - merge_r, criterion="distance"), index=list(cc.columns))
+    offset = int(pd.to_numeric(lab, errors="coerce").max()) + 1   # disjoint id space
+    new_lab = lab.copy()
+    for x in lab.index:
+        c = int(lab[x])
+        if c in grp.index:
+            new_lab[x] = offset + int(grp[c])
+    sizes = new_lab.value_counts()
+    new_big = sorted((int(g) for g in sizes.index if sizes[g] >= min_members),
+                     key=lambda g: -int(sizes[g]))
+    return new_lab, new_big
 
 
 def threshold_scan(cm: pd.DataFrame, ts=(0.3, 0.4, 0.5, 0.6, 0.7), link=LINK):
@@ -401,8 +469,8 @@ def render_flat_panel(cols, traces_raw, grid, out, item_label, *,
     PAGE_W, PAGE_H = 8.27, 11.69
     fig = plt.figure(figsize=(PAGE_W, PAGE_H))
     fig.text(0.075, 0.955, f"{title}", fontsize=12, weight="bold", color="#222")
-    fig.text(0.075, 0.935, f"n={len(cols)} · cv < {FLAT_CV:g} — pulled from correlation "
-             "clustering (flat traces have no reliable shape, so they only bloat the cluster count)",
+    fig.text(0.075, 0.935, f"n={len(cols)} — channels that did NOT join any co-varying family "
+             "(no reliable shape) + Si contamination; bunched so they don't bloat the cluster count",
              fontsize=8.5, color="#666")
     # taller panel when there's no member list to show below it
     ax = (fig.add_axes([0.10, 0.50, 0.86, 0.36]) if listing

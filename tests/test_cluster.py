@@ -86,6 +86,25 @@ with tempfile.TemporaryDirectory() as d:
     check("render_flat_panel: writes one PNG", bool(out) and os.path.exists(out) and os.path.getsize(out) > 4000)
     check("render_flat_panel(empty) -> None", CL.render_flat_panel([], flat_df, grid, f"{d}/x.png", str) is None)
 
+# --- merge_similar: collapse near-identical-shape clusters -------------------
+T = 20
+tt = np.linspace(0, 1, T)
+up = 10 ** (1 + 2 * tt); dn = 10 ** (3 - 2 * tt)
+mcols = {}
+for i in range(3): mcols[f"A{i}"] = up * (1 + 0.01 * np.cos(np.arange(T) + i))   # rising fam 1
+for i in range(3): mcols[f"B{i}"] = up * (1 + 0.01 * np.sin(np.arange(T) + i))   # rising fam 2 (~same)
+for i in range(3): mcols[f"C{i}"] = dn * (1 + 0.01 * np.cos(np.arange(T) + i))   # falling (distinct)
+Lgm = np.log10(pd.DataFrame(mcols))
+labm = pd.Series({**{f"A{i}": 1 for i in range(3)}, **{f"B{i}": 2 for i in range(3)},
+                  **{f"C{i}": 3 for i in range(3)}})
+nlab, nbig = CL.merge_similar(Lgm, labm, [1, 2, 3], merge_r=0.9)
+check("merge_similar: the two near-identical clusters merge (3 -> 2)", len(nbig) == 2, nbig)
+check("merge_similar: rising fams share a merged id; falling stays apart",
+      nlab["A0"] == nlab["B0"] and nlab["A0"] != nlab["C0"])
+check("merge_similar: merged ids are disjoint from original singleton ids",
+      set(nbig).isdisjoint({1, 2, 3}), nbig)
+check("merge_similar: <2 clusters is a no-op", CL.merge_similar(Lgm, labm, [1])[1] == [1])
+
 # --- per-cluster workbook (one tab per cluster) ------------------------------
 wb_rows = [(1, ["A", "B", "C"], 0.9, "rise", 0.5),
            ("remaining (singletons)", ["D", "E"], float("nan"), "n/a", 0.0)]

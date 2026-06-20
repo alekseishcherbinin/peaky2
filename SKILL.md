@@ -126,11 +126,15 @@ file otherwise falls back to `[M-H]-` = wrong polarity). For positive urea-CIMS,
   (ion-channels / isotope-peaks / match-score)`). **Flatness gate:** `split_varying(traces,
   cols, cv_min=FLAT_CV)` pulls flat traces (cv<0.30, no reliable shape) OUT of clustering and
   `render_flat_panel` bunches them into ONE overview (so flat noise doesn't shatter into spurious
-  n3-4 clusters). `FLAT_CV` is the tunable knob. **Per-ion:** assigned analytes cluster PER ION
-  CHANNEL (formula+adduct), not the per-neutral sum (`analyte_viz.ion_traces`), because channels
-  often diverge in time (`analyte_viz.channel_agreement` QC: Ur 44% / Br 22% of multi-channel
+  n3-4 clusters). `FLAT_CV` knob — now serves only the UNASSIGNED path. **Per-ion:** assigned analytes
+  cluster PER ION CHANNEL (formula+adduct), not the per-neutral sum (`analyte_viz.ion_traces`), because
+  channels often diverge in time (`analyte_viz.channel_agreement` QC: Ur 44% / Br 22% of multi-channel
   neutrals' brightest pair disagree). Legend = `formula+adduct (score)`. `cluster.write_cluster_workbook`
   emits a per-cluster XLSX (one tab per cluster: formula / channel / m/z / match_score / tier).
+  **Shape-cluster (assigned):** cluster ALL bright organic channels on RAW log-correlation (NOT
+  reagent-norm — that makes the flat background spuriously 'rise' together), then `cluster.merge_similar`
+  (COMPLETE-linkage centroid merge, `MERGE_R`) folds near-identical-shape families; the non-clustering
+  remainder is the genuinely-flat panel. Per-trace gates can't see coherence, so they hid real bursts.
 - **`analyte_viz.render_van_krevelen_full`** — every assigned peak by CHO/CHON/CHOS
   backbone (Si/F/halogen folded into the backbone, not split out).
 - **`pdf_report.build(out_dir, tag=, label=, ts_path=, batch_name=, run_id=, generated=)`** — the
