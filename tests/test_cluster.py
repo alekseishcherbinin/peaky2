@@ -157,21 +157,22 @@ with tempfile.TemporaryDirectory() as d:
           list(s1.columns))
     check("write_cluster_workbook([]) -> None", CL.write_cluster_workbook([], f"{d}/x.xlsx") is None)
 
-    # reproducibility: two workbooks built from the same data must be byte-identical
-    # (openpyxl otherwise stamps datetime.now() into core.xml + zip member mtimes)
+    # reproducibility: two workbooks from the same data + SAME run time are byte-
+    # identical; built at a DIFFERENT time they differ (the embedded stamp tracks the
+    # run, like the report id/cover — it is NOT frozen to a constant).
     import hashlib
     import time
-    a = CL.write_cluster_workbook(wb_rows, f"{d}/a.xlsx", meta=wb_meta,
-                                  item_label=lambda k: f"ion-{k}",
-                                  member_cols=["neutral_formula", "channel", "match_score", "tier"])
-    time.sleep(1.1)   # wall-clock gap so an un-normalised stamp would differ
-    b = CL.write_cluster_workbook(wb_rows, f"{d}/b.xlsx", meta=wb_meta,
-                                  item_label=lambda k: f"ion-{k}",
-                                  member_cols=["neutral_formula", "channel", "match_score", "tier"])
-    ha = hashlib.sha256(open(a, "rb").read()).hexdigest()
-    hb = hashlib.sha256(open(b, "rb").read()).hexdigest()
-    check("write_cluster_workbook is byte-reproducible (timestamps normalised)", ha == hb,
-          f"{ha[:12]} vs {hb[:12]}")
+    t1 = 1_700_000_000
+    kw = dict(meta=wb_meta, item_label=lambda k: f"ion-{k}",
+              member_cols=["neutral_formula", "channel", "match_score", "tier"])
+    a = CL.write_cluster_workbook(wb_rows, f"{d}/a.xlsx", when=t1, **kw)
+    time.sleep(1.1)   # wall-clock gap: an un-normalised (now()) stamp would differ
+    b = CL.write_cluster_workbook(wb_rows, f"{d}/b.xlsx", when=t1, **kw)
+    c = CL.write_cluster_workbook(wb_rows, f"{d}/c.xlsx", when=t1 + 3600, **kw)
+    H = lambda p: hashlib.sha256(open(p, "rb").read()).hexdigest()
+    check("workbook byte-identical for same data + same run time", H(a) == H(b),
+          f"{H(a)[:12]} vs {H(b)[:12]}")
+    check("workbook differs when the run time differs (stamp not frozen)", H(a) != H(c))
 
 print(f"\n{PASS} passed, {FAIL} failed")
 sys.exit(1 if FAIL else 0)

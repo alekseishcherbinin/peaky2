@@ -458,13 +458,15 @@ def _sheet_name(cid, used: set) -> str:
 
 
 def write_cluster_workbook(rows, out_xlsx, *, meta=None, item_label=None,
-                           member_cols=None, title="clusters"):
+                           member_cols=None, title="clusters", when=None):
     """Per-cluster Excel workbook: a 'summary' sheet (one row per cluster: id, n,
     shape, peak hour, mean r) + ONE sheet PER CLUSTER listing its members. `rows`
     is the cluster_rows output [(cid, members, rbar, shape, peak_hr), ...]; `meta`
     maps a member key -> a dict of columns (e.g. neutral_formula / channel / m_z /
-    match_score / tier). `member_cols` orders/selects those columns. Returns the
-    path (or None if no rows)."""
+    match_score / tier). `member_cols` orders/selects those columns. `when` is the
+    run timestamp embedded in the file (so a re-run with the same inputs+time is
+    byte-identical, while a later run carries a later stamp). Returns the path (or
+    None if no rows)."""
     if not rows:
         return None
     summary = pd.DataFrame([{
@@ -487,24 +489,41 @@ def write_cluster_workbook(rows, out_xlsx, *, meta=None, item_label=None,
                 cols = ["member"] + [c for c in member_cols if c in df.columns]
                 df = df[[c for c in cols if c in df.columns]]
             df.to_excel(xw, sheet_name=_sheet_name(cid, used), index=False)
-    _make_xlsx_deterministic(out_xlsx)
+    _make_xlsx_deterministic(out_xlsx, when=when)
     return out_xlsx
 
 
-# fixed timestamp so two workbooks built from the same data are byte-identical
-# (openpyxl otherwise stamps datetime.now() into core.xml + every zip member mtime).
-_XLSX_EPOCH = (2020, 1, 1, 0, 0, 0)
-_XLSX_ISO = b"2020-01-01T00:00:00Z"
+def _resolve_when(when):
+    """The timestamp to embed in a workbook. Precedence: explicit `when` (a datetime
+    or epoch seconds) -> SOURCE_DATE_EPOCH env (the reproducible-build convention; the
+    run driver sets it to the run's generation time) -> the current UTC time. Tying it
+    to the RUN time means two runs at different times get different bytes (as they
+    should — like the report ID and cover), while a re-run with the same inputs+time
+    is byte-identical."""
+    import os
+    from datetime import datetime, timezone
+    if when is None:
+        sde = os.environ.get("SOURCE_DATE_EPOCH")
+        when = int(sde) if sde else None
+    if when is None:
+        return datetime.now(timezone.utc)
+    if isinstance(when, (int, float)):
+        return datetime.fromtimestamp(int(when), tz=timezone.utc)
+    return when
 
 
-def _make_xlsx_deterministic(path) -> None:
-    """Rewrite an .xlsx so its bytes are reproducible: normalise the openpyxl-stamped
-    creation/modification time in docProps/core.xml AND every zip member's embedded
-    mtime to a fixed constant. The sheet data is untouched — identical content,
-    deterministic bytes."""
+def _make_xlsx_deterministic(path, *, when=None) -> None:
+    """Rewrite an .xlsx so its bytes are a deterministic function of its data + the
+    run timestamp: replace openpyxl's datetime.now() stamps (docProps/core.xml AND
+    every zip member's embedded mtime) with `when` (see _resolve_when). Same data +
+    same time -> identical bytes; a later run -> a later timestamp. Zip mtimes must
+    be >= 1980 (the format floor), which any real run time satisfies."""
     import os
     import re
     import zipfile
+    w = _resolve_when(when)
+    dt = (max(w.year, 1980), w.month, w.day, w.hour, w.minute, w.second)
+    iso = w.strftime("%Y-%m-%dT%H:%M:%SZ").encode()
     with zipfile.ZipFile(path) as zin:
         items = [(n, zin.read(n)) for n in sorted(zin.namelist())]
     tmp = f"{path}.tmp"
@@ -512,8 +531,8 @@ def _make_xlsx_deterministic(path) -> None:
         for name, data in items:
             if name == "docProps/core.xml":
                 data = re.sub(rb"(<dcterms:(?:created|modified)[^>]*>)[^<]*(</dcterms:)",
-                              lambda m: m.group(1) + _XLSX_ISO + m.group(2), data)
-            zi = zipfile.ZipInfo(name, date_time=_XLSX_EPOCH)
+                              lambda m: m.group(1) + iso + m.group(2), data)
+            zi = zipfile.ZipInfo(name, date_time=dt)
             zi.compress_type = zipfile.ZIP_DEFLATED
             zi.external_attr = 0o600 << 16
             zout.writestr(zi, data)
