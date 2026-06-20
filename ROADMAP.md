@@ -91,7 +91,8 @@ that clears after 15-30 min of NO traffic (polling EXTENDS it). For a blocked li
 - `analyte_viz.py` — Van Krevelen (organic + `render_van_krevelen_full` = every assigned peak by
   CHO/CHON/CHOS backbone, Si/F/halogen folded in) + `attach_dynamics(bin_minutes=)` (short-batch).
 - `pdf_report.py` — STANDARD ITERABLE report: `SECTIONS=[cover, coverage, composition, gka,
-  families, clusters, methods]`, ctx loaded once by `load_context`. "Assignment quality" page =
+  families, changers, clusters, methods]` (the `changers` section = big standalone changers), ctx
+  loaded once by `load_context`. Cover stamped UTC (Report ID + `… UTC` generated). "Assignment quality" page =
   match-score-by-tier + mass-accuracy box (Id/Cand/isotopologue) + assigned-vs-unassigned +
   per-ADDUCT channels with signal%. Cover has batch name + skill version (git sha). Cluster legend
   = `formula (ion-channels / isotope-peaks / match-score)`. The `gka` section renders
@@ -149,7 +150,7 @@ deferred_rerun, all in `~/mascope-output/orange-assign/`.
    → create the GitHub remote + push (none yet; .env is outside the repo, .gitignore covers parquet/log/npy).
 4. Binning max-width split guard in `timeseries.build_matrix` (single-linkage chains on dense/drifting data).
 
-**Tests: 24 files green** (sampling 19, assign_batch 12, cluster 25, pdf_report 14, pipeline 8,
+**Tests: 24 files green** (sampling 19, assign_batch 12, cluster 36, pdf_report 14, pipeline 9,
 cleanup 29, analyte_viz 15, io_mascope 21, gka_figure 18, …). Run `python3 tests/test_*.py`. WAF:
 don't run scoring CONCURRENTLY.
 
