@@ -63,6 +63,18 @@ no live re-run — regenerated from the canonical orange-assign/<tag>/ ledgers v
   `~/mascope-output/gka-iter/accretion_prototype.py` + an accretion-VK revive note in the memory — left
   untouched (separate workstream).
 
+**SESSION WRAP (2026-06-20, git be91636 + docs).** All report improvements committed; SKILL.md +
+README.md refreshed (SECTIONS list, composition.py/plausibility.py modules, A4 changers, PDF-name=Report
+ID, determinism note, test count **749 across 26 files**). Tree clean. **NEXT FOCUS = REFACTORING.**
+Prime candidates: (1) fold the scratch drivers `~/mascope-output/orange-assign/run_{orange,clusters,
+vankrevelen,report,peaky}.py` into ONE parameterised package CLI (`mascope_assign/cli.py` or extend
+`pipeline.py`) — they're the last copy-paste layer outside the repo and the label/batch/reagent maps are
+duplicated across them; (2) the report drivers re-read per-file ledgers to rebuild the explained-mz /
+ion-label / meta maps that `assign_batch` already computed — thread those through `out['…']` instead of
+re-deriving; (3) consider a single `RunContext` (batch_name/reagent/tag/run_id/when/paths) passed to all
+stages instead of env vars (PEAKY_OUT/PEAKY_RUN_ID/PEAKY_GENERATED/SOURCE_DATE_EPOCH). Keep the 749-test
+suite green through the refactor; nothing about the report CONTENT should change (byte-diff the outputs).
+
 **Data path:** SDK-over-shell, creds at `~/.mascope/.env`; `io_mascope.connect()` reads the
 live file (the `mcp__mascope__*` tools hold a stale token). **<server> is behind a Cloudflare
 WAF** — a burst of live runs trips a 403 HTML block ("Attention Required", NOT a token error)

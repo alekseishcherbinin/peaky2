@@ -138,16 +138,32 @@ file otherwise falls back to `[M-H]-` = wrong polarity). For positive urea-CIMS,
   `FLAT_CLUSTER_RANGE`) DEMOTES clusters that co-vary but whose family mean is flat into the flat panel.
   The non-clustering remainder + flat clusters + Si = the flat panel; only dynamic families are shown.
   **Big standalone changers:** `cluster.big_changers` (per-channel smoothed max/median ≥ `BIG_CHANGE_FOLD`,
-  ~≥5-10× raw, no family needed) + `render_changers` (small-multiples) pull dramatically-changing single
-  channels into their own report section (the `changers` SECTION), out of the flat panel.
+  ~≥5-10× raw, no family needed) + `render_changers` (A4-PORTRAIT small-multiples, paginated, decade-
+  snapped log y) pull dramatically-changing single channels into their own report section (the `changers`
+  SECTION), out of the flat panel.
 - **`analyte_viz.render_van_krevelen_full`** — every assigned peak by CHO/CHON/CHOS
   backbone (Si/F/halogen folded into the backbone, not split out).
 - **`pdf_report.build(out_dir, tag=, label=, ts_path=, batch_name=, run_id=, generated=)`** — the
-  STANDARD iterable PDF report. Structure = `SECTIONS = [cover, coverage, composition, gka, families,
-  clusters, methods]`, each a `section(ctx, pdf)` fn over a context loaded once by
-  `load_context`. To change the report, edit/reorder a section — nothing else couples.
-  The `gka` section renders `gka_figure.render_gka` on demand from the merged ledger. The cover
-  (title page) stamps `run_id` (the Report ID) and a date+TIME `generated` line.
+  STANDARD iterable PDF report (uniform A4 portrait). Structure = `SECTIONS = [cover, findings, coverage,
+  composition, scrutiny, gka, families, changers, clusters, methods]`, each a `section(ctx, pdf)` fn over
+  a context loaded once by `load_context`. To change the report, edit/reorder a section — nothing else
+  couples. Section highlights:
+  - `findings` (page 2): event-TIC of the FULL batch (total signal vs wall-clock, rep samples ticked) +
+    data-driven takeaways — event rise×, SIGNAL-weighted composition, top species, oligomer/HOM line.
+  - `composition`: distinct-neutral COUNT by backbone AND signal-weighted, + the ammonium/amine
+    degeneracy two-way (`composition.py`: [M+NH4]+(CHO) is mass-identical to [M+H]+(amine X+NH3) so many
+    CHON are double-counted — disclosed + collapsed count). Positive-only messaging gated on `ctx['positive']`.
+  - coverage `Signal & peaks by role`: splits explained signal into analyte(M0+iso)/reagent/unexplained
+    (a reagent-dominated Br- spectrum isn't "fully characterised"); the cover echoes the split.
+  - `scrutiny` (`plausibility.py`): flags Candidate-tier mass-coincidence formulas (high heteroatom /
+    very low H/C / wrong-mode halogen); Identified never flagged; renders only if something is flagged.
+  - The `gka` section renders `gka_figure.render_gka` on demand from the merged ledger.
+  The cover stamps `run_id` (Report ID) + a date+TIME `generated` line; the PDF FILENAME embeds the
+  Report ID (`report_<run_id>.pdf`). Cover formula-disagreements read from the merged ledger's own
+  `formula_agree` (authoritative). **Reproducible bytes:** figures/PDF/CSV are a deterministic fn of
+  inputs + run-time — the xlsx + matplotlib metadata stamp the run time via `SOURCE_DATE_EPOCH` (same
+  inputs+time → byte-identical; a later run → a later stamp). The live `match_compounds` step is the only
+  from-scratch non-determinism (server-side).
 - **Run versioning** — `pipeline.make_run_dir(base, batch_name, when)` / `run_id` / `run_stamp` /
   `slugify`: every set of outputs goes in its own timestamped folder `<batch-slug>_<date>_<time>/`
   (folder name == Report ID). Pass ONE `datetime.now()` per run so folder, id and cover agree.
@@ -243,8 +259,10 @@ already open. `run_assignment.py` emits one per run.
 | `cleanup.py` | residual cleanup: isotope-confirmed recovery, bromide-cluster labelling, ringing-artifact flagging, satellite reclaim, **`prefer_amine_over_ammonium`** (positive: re-read uncorroborated/non-co-varying `[M+NH4]+` as the `[M+H]+` amine) |
 | **`sampling.py`** | THE RULE — `select_representative_samples` (5 evenly-time-spaced + max-TIC) for batch assignment |
 | **`assign_batch.py`** | `run(batch\|peaks, ts_peaks=, amine_r_min=)` — assign the reps, keep per-file ledgers, offset-aware merge (`align`) + jitter table; applies the positive amine gate at merge level |
-| **`cluster.py`** | correlation clustering (log-corr, COMPLETE linkage r>0.6, signed distance) → `render_a4` A4-portrait paginated panels + remaining-peaks overview. **Flatness gate** `split_varying`/`render_flat_panel` (cv<`FLAT_CV` bunched, not clustered) |
-| **`pdf_report.py`** | STANDARD iterable PDF report — `build()` over `SECTIONS=[cover, coverage, composition, gka, families, clusters, methods]`, ctx loaded once |
+| **`cluster.py`** | correlation clustering (log-corr, COMPLETE linkage r>0.6, signed distance) → `render_a4` A4-portrait paginated panels + remaining-peaks overview. **Flatness gate** `split_varying`/`render_flat_panel` (cv<`FLAT_CV` bunched, not clustered). `render_changers` = A4-portrait big-standalone-changers page. `write_cluster_workbook(when=)` — byte-reproducible per-cluster XLSX (timestamps stamped from the run time) |
+| **`composition.py`** | report composition accounting (pure): `signal_by_backbone` (intensity-weighted CHO/CHON/CHOS), `amine_shadow_stats`/`collapsed_composition` (the [M+NH4]+/[M+H]+-amine degeneracy two-way), `top_species_by_signal`, `oligomer_flag` (high-C high-O HOM-dimer candidates) |
+| **`plausibility.py`** | chemical-plausibility QC: `scan(merged, polarity)` flags Candidate-only mass-coincidence formulas (high heteroatom / very low H/C / wrong-mode halogen); Identified never flagged (powers the `scrutiny` report section) |
+| **`pdf_report.py`** | STANDARD iterable PDF report (uniform A4) — `build()` over `SECTIONS=[cover, findings, coverage, composition, scrutiny, gka, families, changers, clusters, methods]`, ctx loaded once. PDF filename = `report_<run_id>.pdf` |
 | **`gka_figure.py`** | STATIC GKA findings page: per-family small-multiple Kendrick mass-defect plots (`render_gka`), each rotated to flatten its homologous series into horizontal ladders. a family shows ONLY if it forms a series (`present_families`); contaminants (siloxane/fluorinated) need a short ≥2 ladder, else not plotted. Print counterpart of `scripts/gka_widget.py` |
 | `profiles.py` | `ReagentProfile` (Br/Ur: polarity/adducts/normaliser/context) + `resolve('auto')` |
 | `timeseries.py` | **time-resolved disposition** (optional, `--ts-batch`): reagent-normalise a batch's per-sample peaks, cv_norm + family co-variation -> classify each M0 inlet-flat-background vs ambient analyte, demote flat di-bromide/CO3 background |
@@ -254,11 +272,10 @@ already open. `run_assignment.py` emits one per run.
 
 ## Testing & iteration
 
-`for t in chemistry contexts ledger isotopes series_gka io_mascope reagents
-passes residual ladders tiers report series_detect degeneracy cleanup siloxane analyte_viz timeseries; do
-python3 tests/test_$t.py; done` — **570+ offline assertions**, no network
-(io_mascope live smoke gated behind `MASCOPE_LIVE=1`). Every module has a matching
-`tests/test_<module>.py`. Add a test with each change; keep the suite green.
+`for t in tests/test_*.py; do python3 "$t"; done` — **749 offline assertions across
+26 files**, no network (io_mascope live smoke gated behind `MASCOPE_LIVE=1`). Every
+module has a matching `tests/test_<module>.py`. Add a test with each change; keep the
+suite green.
 Regression: `python3 scripts/check_flagships.py <ledger.csv>` — now **offset-aware**
 (bounds judged vs the median-ppm backbone center, so a copy of the reference at a
 different server calibration still passes). See `README.md` for the dev loop and

@@ -14,7 +14,7 @@ mascope-peak-assign/
   mascope_assign/     the package (see SKILL.md module map) — single-sample assign
                       + the batch pipeline: sampling / assign_batch / cluster /
                       analyte_viz (full VK) / pdf_report
-  tests/              one test_<module>.py per module (22 files) + fixtures/match_tree.json
+  tests/              one test_<module>.py per module (26 files) + fixtures/match_tree.json
   scripts/
     run_assignment.py one-shot: pipeline -> csv/xlsx/md/json/html
     gka_widget.py     standalone interactive rotating-GKA from a ledger CSV
@@ -38,13 +38,9 @@ MCP. `~5 min` for a ~1000-peak sample at cutoff 100.
 ## Test loop
 
 ```bash
-for t in chemistry contexts ledger isotopes series_gka io_mascope reagents \
-         passes residual ladders tiers report series_detect degeneracy cleanup \
-         siloxane timeseries; do
-  echo "== $t =="; python3 tests/test_$t.py || break
-done
+for t in tests/test_*.py; do echo "== $t =="; python3 "$t" || break; done
 ```
-560+ offline assertions, no network. Live smoke for io_mascope:
+749 offline assertions across 26 files, no network. Live smoke for io_mascope:
 `MASCOPE_LIVE=1 python3 tests/test_io_mascope.py`. **Rule: every code change
 ships with a test; keep the suite green.** Tests use plain asserts (no pytest),
 exit non-zero on failure.
