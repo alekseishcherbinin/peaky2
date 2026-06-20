@@ -3,7 +3,7 @@
 It wraps the mascope-sdk MascopeClient and exposes exactly the operations the
 pipeline needs:
 
-  * connect()                  -- build a client from ~/mascope-mcp/.env
+  * connect()                  -- build a client from ~/.mascope/.env
   * fetch_peaks()              -- pull + cache the raw peak table
   * resolve_mechanism_ids()    -- ionization name -> id
   * query_candidates()         -- cheminfo formula enumerator for one m/z
@@ -33,7 +33,10 @@ CACHE_ROOT = Path(os.path.expanduser("~/.mascope-assign-cache"))
 
 
 def _find_env(explicit: str | None = None) -> str:
-    for cand in ([explicit] if explicit else []) + ENV_SEARCH:
+    # precedence: explicit arg (e.g. CLI --env) > $MASCOPE_ENV > the search list.
+    head = [explicit] if explicit else ([os.environ["MASCOPE_ENV"]]
+                                        if os.environ.get("MASCOPE_ENV") else [])
+    for cand in head + ENV_SEARCH:
         p = os.path.expanduser(cand)
         if os.path.exists(p):
             return p
@@ -60,14 +63,18 @@ _ISO_TOKEN = re.compile(r"\[(\d+[A-Z][a-z]?)\](\d*)")
 # ---------------------------------------------------------------------------
 def connect(env_path: str | None = None):
     """Build a MascopeClient from the .env (MASCOPE_URL, MASCOPE_ACCESS_TOKEN).
-    Searches ENV_SEARCH (canonical ~/.mascope/.env first) unless env_path given."""
+    Searches ENV_SEARCH (canonical ~/.mascope/.env first), or $MASCOPE_ENV, unless
+    env_path is given. Process env vars of the same name also work directly."""
     from dotenv import load_dotenv
     path = _find_env(env_path)
     load_dotenv(path)
     url = os.environ.get("MASCOPE_URL")
     tok = os.environ.get("MASCOPE_ACCESS_TOKEN")
     if not url or not tok:
-        raise RuntimeError(f"MASCOPE_URL / MASCOPE_ACCESS_TOKEN not found in {path}")
+        raise RuntimeError(
+            f"MASCOPE_URL / MASCOPE_ACCESS_TOKEN not found (looked in {path}). "
+            "Copy .env.example to ~/.mascope/.env and fill it in, set $MASCOPE_ENV "
+            "to your .env path, or export the two variables directly.")
     from mascope_sdk import MascopeClient
     return MascopeClient(url=url, access_token=tok)
 
@@ -78,6 +85,25 @@ def escape_batch(name: str) -> str:
     'Orange peeling (Ur+ CIMS)' — parens + '+') silently fails to match. Escape
     it to match literally."""
     return re.escape(name)
+
+
+def list_datasets(client) -> pd.DataFrame:
+    """All datasets (workspaces) visible to the token. Columns include
+    `dataset_name` / `dataset_id` / `instrument` / `dataset_type`. Powers
+    `mascope-assign list datasets` (data discovery)."""
+    ds = client.datasets.list()
+    if ds is None or len(ds) == 0:
+        raise RuntimeError("no datasets returned (check MASCOPE_URL / token)")
+    return ds
+
+
+def list_batches(client, dataset: str) -> pd.DataFrame:
+    """Sample batches in a dataset. Columns include `sample_batch_name` /
+    `polarity` / `sample_batch_id` / `status`."""
+    bs = client.batches.list(dataset=dataset)
+    if bs is None or len(bs) == 0:
+        raise RuntimeError(f"no batches for dataset {dataset!r}")
+    return bs
 
 
 def fetch_batch_samples(client, batch: str, *, dataset: str | None = None,

@@ -1,0 +1,82 @@
+"""Offline tests for the CLI (cli.py): parser wiring, reagent resolution for
+explicit profiles (no network), friendly server-error hints, the --env override,
+and the offline `gka` subcommand. Run: python3 tests/test_cli.py"""
+import os
+import sys
+import tempfile
+from pathlib import Path
+from types import SimpleNamespace
+
+import pandas as pd
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from mascope_assign import cli, gka_widget, profiles  # noqa: E402
+
+PASS = FAIL = 0
+def check(name, cond, detail=""):
+    global PASS, FAIL
+    if cond: PASS += 1; print(f"  ok  {name}")
+    else: FAIL += 1; print(f"FAIL  {name}  {detail}")
+
+
+# ---- gka_widget is importable FROM THE PACKAGE (it moved out of scripts/) ----
+check("gka_widget moved into the package", hasattr(gka_widget, "build_points"))
+
+# ---- parser wiring -----------------------------------------------------------
+P = cli.build_parser()
+a = P.parse_args(["list", "datasets"])
+check("parse `list datasets`", a.what == "datasets" and a.func is cli.cmd_list)
+a = P.parse_args(["list", "batches", "--dataset", "Aleksei's workspace"])
+check("parse `list batches --dataset`", a.what == "batches" and a.dataset == "Aleksei's workspace")
+a = P.parse_args(["assign", "--sample-id", "XYZ"])
+check("parse `assign` defaults reagent=auto", a.func is cli.cmd_assign and a.reagent == "auto"
+      and a.sample_id == "XYZ")
+a = P.parse_args(["assign", "--sample-id", "X", "--reagent", "Br",
+                  "--adducts", "[M+Br]-", "[M-H]-"])
+check("parse `assign --adducts` (multi)", a.adducts == ["[M+Br]-", "[M-H]-"] and a.reagent == "Br")
+a = P.parse_args(["--env", "/tmp/x.env", "list", "datasets"])
+check("top-level --env is parsed", a.env == "/tmp/x.env")
+
+# subcommand is required
+try:
+    P.parse_args([])
+    check("no subcommand -> error", False, "did not raise")
+except SystemExit:
+    check("no subcommand -> error", True)
+
+# ---- reagent resolution: explicit profile name needs NO network --------------
+ns = SimpleNamespace(adducts=None, reagent="Br", context=None, sample_id="X", no_cache=False)
+ad, ctx, note = cli._resolve_reagent(ns)
+check("resolve --reagent Br -> Br adducts", ad == list(profiles.BR.adducts), ad)
+check("resolve --reagent Br -> Br context", ctx == profiles.BR.context, ctx)
+check("resolve --reagent Br -> labelled note", "Br" in note, note)
+
+ns = SimpleNamespace(adducts=None, reagent="uronium", context=None, sample_id="X", no_cache=False)
+ad, ctx, note = cli._resolve_reagent(ns)
+check("resolve alias 'uronium' -> Ur context", ctx == profiles.UR.context, ctx)
+
+# explicit --adducts overrides reagent, no network
+ns = SimpleNamespace(adducts=["[M+Na]+"], reagent="auto", context="chamber", sample_id="X", no_cache=False)
+ad, ctx, note = cli._resolve_reagent(ns)
+check("explicit --adducts wins", ad == ["[M+Na]+"] and ctx == "chamber", (ad, ctx))
+
+# ---- friendly server-error hints ---------------------------------------------
+check("403 -> WAF hint", "WAF" in (cli._friendly_server_error(RuntimeError("HTTP 403 Attention Required")) or ""))
+check("401 -> token hint", "token" in (cli._friendly_server_error(RuntimeError("401 Unauthorized")) or "").lower())
+check("no-peaks -> list hint", "list" in (cli._friendly_server_error(RuntimeError("no peaks returned for sample Z")) or ""))
+check("unknown error -> no hint", cli._friendly_server_error(ValueError("boom")) is None)
+
+# ---- offline `gka` subcommand + --env override -------------------------------
+with tempfile.TemporaryDirectory() as d:
+    led = pd.DataFrame({"mz": [200.1, 214.1, 99.9], "height": [1e5, 5e4, 30.0],
+                        "role": ["M0", "M0", "unexplained"],
+                        "tier": ["Identified", "Candidate", ""]})
+    csv = os.path.join(d, "led.csv"); led.to_csv(csv, index=False)
+    out = os.path.join(d, "w.html")
+    rc = cli.main(["--env", os.path.join(d, "creds.env"), "gka", csv, "-o", out])
+    check("`gka` subcommand returns 0", rc == 0, rc)
+    check("`gka` writes an HTML file", os.path.exists(out) and "<html" in Path(out).read_text())
+    check("--env sets MASCOPE_ENV", os.environ.get("MASCOPE_ENV") == os.path.join(d, "creds.env"))
+
+print(f"\n{PASS} passed, {FAIL} failed")
+sys.exit(1 if FAIL else 0)

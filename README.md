@@ -25,22 +25,30 @@ report), see the "Representative-sample batch pipeline" section of SKILL.md and 
 reference drivers in `~/mascope-output/orange-assign/` (run_orange / run_clusters /
 run_vankrevelen / run_report).
 
-## Run it
+## Install & run
 
 ```bash
-cd ~/.claude/skills/mascope-peak-assign
-python3 scripts/run_assignment.py --sample-id <ID> --context ambient-air \
+pip install -e .                   # pulls mascope-sdk + deps; registers `mascope-assign`
+cp .env.example ~/.mascope/.env    # then fill in MASCOPE_URL + MASCOPE_ACCESS_TOKEN
+
+mascope-assign list datasets                              # discover your data
+mascope-assign list batches  --dataset "<workspace>"
+mascope-assign list samples  --batch "<batch>" --dataset "<workspace>"
+mascope-assign assign --sample-id <ID> --reagent Br \
     --height-cutoff 100 --output-dir ~/mascope-output/<name>
 ```
-Needs host Python (has `mascope-sdk`) + `~/mascope-mcp/.env`. Run via the shell
-MCP. `~5 min` for a ~1000-peak sample at cutoff 100.
+`--reagent {auto,Br,Ur,…}` forces the analyte channels (a positive/sparse sample
+otherwise mis-detects as negative). Heavy work runs on the host Python; a Mascope
+token is read from `~/.mascope/.env` (or `--env` / `$MASCOPE_ENV`). `~5 min` for a
+~1000-peak sample at cutoff 100. (`python3 scripts/run_assignment.py …` still works
+as a thin forwarder; `python3 -m mascope_assign …` is equivalent to the script.)
 
 ## Test loop
 
 ```bash
 for t in tests/test_*.py; do echo "== $t =="; python3 "$t" || break; done
 ```
-749 offline assertions across 26 files, no network. Live smoke for io_mascope:
+768 offline assertions across 27 files, no network. Live smoke for io_mascope:
 `MASCOPE_LIVE=1 python3 tests/test_io_mascope.py`. **Rule: every code change
 ships with a test; keep the suite green.** Tests use plain asserts (no pytest),
 exit non-zero on failure.

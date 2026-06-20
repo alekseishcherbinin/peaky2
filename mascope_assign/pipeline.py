@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import re
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import pandas as pd
@@ -122,3 +123,94 @@ def run(*, batch: str | None = None, dataset: str | None = None,
     if out_dir:
         os.makedirs(os.path.expanduser(out_dir), exist_ok=True)
     return out
+
+
+# ---------------------------------------------------------------------------
+# RunContext + the batch pipeline (assign -> cluster -> Van Krevelen -> report).
+# Replaces the out-of-repo run_peaky.py orchestrator and its PEAKY_* env-var +
+# subprocess threading: ONE object carries the run's identity (out_dir / run_id /
+# generated stamp / batch / profile) into every stage as a plain argument.
+# ---------------------------------------------------------------------------
+@dataclass
+class RunContext:
+    out_dir: str                 # the versioned run folder (holds all artifacts)
+    batch_name: str
+    tag: str                     # filename token (e.g. the profile name)
+    label: str                   # display label for figure/report titles
+    when: datetime
+    run_id: str                  # == folder basename; stamped on the report cover
+    generated: str               # human stamp 'YYYY-MM-DD HH:MM UTC'
+    profile: object = None       # ReagentProfile
+    dataset: str | None = None
+    ts_path: str | None = None   # parquet the report reads for the event TIC
+
+
+def make_run_context(base_out: str, batch_name: str, profile, *, when=None,
+                     tag=None, label=None, dataset=None) -> RunContext:
+    """Create a fresh timestamped run folder and the context that identifies it.
+    Pass ONE `when` per run so folder / run_id / cover stamp all agree."""
+    when = when or datetime.now(timezone.utc)
+    return RunContext(
+        out_dir=make_run_dir(base_out, batch_name, when), batch_name=batch_name,
+        tag=tag or profile.name, label=label or profile.label, when=when,
+        run_id=run_id(batch_name, when), generated=run_stamp(when)[1],
+        profile=profile, dataset=dataset)
+
+
+def generate_report(ctx: RunContext, ts, *, subject: str | None = None,
+                    do_cluster=True, do_vk=True, do_report=True, log=print) -> dict:
+    """Offline generation half: cluster figures + Van Krevelen + the PDF report,
+    from the merged / per-file ledgers already in `ctx.out_dir` and the batch time
+    series. No network. Same artifacts the run_clusters / run_vankrevelen /
+    run_report scratch chain produced, but in-process via the RunContext."""
+    from . import analyte_viz as V
+    from . import clustering as CLU
+    from . import pdf_report as R
+
+    if isinstance(ts, str):
+        ctx.ts_path = os.path.expanduser(ts)
+        ts = pd.read_parquet(ctx.ts_path)
+    elif ctx.ts_path is None:
+        ctx.ts_path = os.path.join(ctx.out_dir, f"{ctx.tag}_ts.parquet")
+        ts.to_parquet(ctx.ts_path)
+
+    out: dict = {"ctx": ctx}
+    if do_cluster:
+        out["cluster"] = CLU.cluster_batch(ctx.out_dir, ts, ctx.profile,
+                                           tag=ctx.tag, label=ctx.label, log=log)
+    if do_vk:
+        out["vk"] = V.van_krevelen_batch(ctx.out_dir, ts, ctx.profile, tag=ctx.tag,
+                                         label=ctx.label, batch_name=ctx.batch_name,
+                                         subject=subject, log=log)
+    if do_report:
+        out["report_pdf"] = R.build(ctx.out_dir, tag=ctx.tag, label=ctx.label,
+                                     ts_path=ctx.ts_path, batch_name=ctx.batch_name,
+                                     run_id=ctx.run_id, generated=ctx.generated)
+        log(f"[report] wrote {out['report_pdf']}")
+    return out
+
+
+def run_batch(*, batch: str, dataset: str | None = None, reagent: str = "auto",
+              base_out: str, ts=None, when=None, subject: str | None = None,
+              amine_r_min: float = 0.7, do_report=True, log=print, **assign_kw) -> dict:
+    """Full batch pipeline in ONE call: representative-sample ASSIGN (live
+    match_compounds) -> merge -> cluster figures -> Van Krevelen -> PDF report,
+    into one versioned run folder. `ts` is the full-batch per-sample peak time
+    series (DataFrame or parquet path); if None it is fetched live and reused for
+    the amine gate + clustering. Returns {ctx, assign, cluster, vk, report_pdf}."""
+    from . import assign_batch as AB
+
+    if isinstance(ts, str):
+        ts = pd.read_parquet(os.path.expanduser(ts))
+    if ts is None:
+        log(f"[batch] fetching full-batch time series for {batch!r} ...")
+        ts = load(batch=batch, dataset=dataset)
+    prof = P.resolve(reagent, ts)
+    ctx = make_run_context(base_out, batch, prof, when=when, dataset=dataset)
+    log(f"[batch] {ctx.run_id} -> {ctx.out_dir}")
+
+    res = AB.run(batch=batch, dataset=dataset, reagent=prof.name,
+                 out_dir=ctx.out_dir, ts_peaks=ts, amine_r_min=amine_r_min,
+                 log=log, **assign_kw)
+    gen = generate_report(ctx, ts, subject=subject, do_report=do_report, log=log)
+    return {"ctx": ctx, "assign": res, **gen}

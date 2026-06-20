@@ -423,3 +423,52 @@ def render_timeseries(grid: np.ndarray, traces: pd.DataFrame, analytes: pd.DataF
     ax.set_ylabel("raw intensity (cps)"); ax.set_title(title); ax.grid(alpha=0.3, which="both")
     fig.tight_layout(); fig.savefig(path, dpi=120); plt.close(fig)
     return path
+
+
+def van_krevelen_batch(out_dir, ts, profile, *, merged=None, tag=None, label=None,
+                       batch_name=None, subject=None, bin_minutes=None, log=print) -> dict:
+    """Both Van Krevelen figures + the full-VK CSV for one batch — the in-package
+    home of the `run_vankrevelen.py` scratch driver. (1) organic-only VK (Si
+    excluded), changing analytes coloured; (2) FULL VK — every assigned peak by
+    CHO/CHON/CHOS backbone (Si/F/halogen folded in) + a `van_krevelen_full_<tag>.csv`.
+    """
+    import os
+
+    from . import timeseries as TS
+
+    OUT = os.path.expanduser(out_dir)
+    tag = tag or profile.name
+    label = label or profile.label
+    batch_name = batch_name or label
+    if merged is None:
+        merged = os.path.join(OUT, "merged_ledger.csv")
+    merged = pd.read_csv(merged) if isinstance(merged, str) else merged.copy()
+    merged["role"] = "M0"
+    if isinstance(ts, str):
+        ts = pd.read_parquet(os.path.expanduser(ts))
+    ts = ts.copy()
+    ts["datetime_utc"] = pd.to_datetime(ts["datetime_utc"], utc=True)
+    BIN_MIN = bin_minutes or TS.auto_bin_minutes(ts)
+
+    # (1) organic-only VK (Si excluded) — the clean atmospheric view
+    an = analyte_table(merged, exclude_contaminant=True)
+    an = attach_dynamics(an, ts, profile.adducts, mode="raw", bin_minutes=BIN_MIN)
+    nchg = int(an["changing"].sum())
+    log(f"{tag}: {len(an)} organic analytes ({nchg} changing); bin={BIN_MIN}min")
+    subj = f" · {subject}" if subject else ""
+    render_van_krevelen(
+        an, f"{OUT}/van_krevelen_{tag}.png",
+        title=f"{label}{subj} — Van Krevelen ({len(an)} analytes, {nchg} changing)")
+
+    # (2) FULL VK — EVERY assigned peak, coloured by composition (Si/F/halogen shown)
+    anf = analyte_table(merged, exclude_contaminant=False)
+    anf = attach_dynamics(anf, ts, profile.adducts, mode="raw", bin_minutes=BIN_MIN)
+    anf["fclass"] = anf["neutral_formula"].map(full_class)
+    log(f"{tag} FULL: {len(anf)} assigned neutrals; classes {anf['fclass'].value_counts().to_dict()}")
+    render_van_krevelen_full(
+        anf, f"{OUT}/van_krevelen_full_{tag}.png",
+        title=f"Van Krevelen — {batch_name}   ({len(anf)} assigned compounds)")
+    anf[["neutral_formula", "adduct", "tier", "oc", "hc", "fclass", "median_cps", "cv", "changing"]] \
+        .to_csv(f"{OUT}/van_krevelen_full_{tag}.csv", index=False)
+    log(f"wrote {OUT}/van_krevelen_full_{tag}.png")
+    return {"organic": an, "full": anf, "bin_minutes": BIN_MIN, "out_dir": OUT, "tag": tag}

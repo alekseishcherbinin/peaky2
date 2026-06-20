@@ -19,9 +19,11 @@ description: >-
 
 # Mascope multi-pass peak assignment
 
-A reproducible, test-driven, SDK-native pipeline. **All heavy work runs locally
-via `mcp__shell__run_command`** against the host Python (which has `mascope-sdk`);
-the Mascope MCP is never used to transport peak tables through context.
+A reproducible, test-driven, SDK-native pipeline. **All heavy work runs on the
+host Python** (which has `mascope-sdk`) via your shell / Bash tool — or a shell
+MCP if your Claude runs sandboxed; the `mascope__*` MCP is never used to transport
+peak tables through context. (Outside Claude, just run the `mascope-assign` CLI in
+a terminal.)
 
 This is the from-scratch successor to `mascope-formula-assignment`. Canonical
 home and iteration repo: `~/.claude/skills/mascope-peak-assign/`.
@@ -44,19 +46,24 @@ ledger's commit API enforces structural invariants so no pass can corrupt it.
 
 ## Pre-flight
 
-1. Use `mcp__shell__run_command` (host Python), not the cowork sandbox.
-2. `.env` at `~/mascope-mcp/.env` has `MASCOPE_URL` + `MASCOPE_ACCESS_TOKEN`
-   (auto-loaded). `openpyxl` must import (`pip3 install --user openpyxl`).
-3. Pick `--context` from the sample's setting (see below).
+1. Run on the host Python via your shell / Bash tool (host has `mascope-sdk`),
+   not a sandboxed shell. `pip install -e .` once (pulls deps, registers the CLI).
+2. `.env` at `~/.mascope/.env` has `MASCOPE_URL` + `MASCOPE_ACCESS_TOKEN`
+   (auto-loaded; copy `.env.example`; or `--env` / `$MASCOPE_ENV`).
+3. Pick `--reagent` (forces analyte channels) and/or `--context` for the sample.
 
 ## Running
 
+Discover data, then assign (the installed console command):
+
 ```bash
-cd ~/.claude/skills/mascope-peak-assign
-python3 scripts/run_assignment.py \
-    --sample-id <ID> --context ambient-air \
+mascope-assign list datasets
+mascope-assign list samples --batch "<batch>" --dataset "<workspace>"
+mascope-assign assign --sample-id <ID> --reagent <Br|Ur|auto> \
     --height-cutoff 100 --output-dir ~/mascope-output/<name>
 ```
+(`python3 -m mascope_assign assign …` and the legacy `scripts/run_assignment.py`
+forwarder are equivalent.)
 
 Writes `<ID>_<UTC>_{ledger.csv, assignments.xlsx, summary.md, manifest.json,
 gka.html}` plus per-pass ledger checkpoints. Full run on a ~1000-peak Br-CIMS

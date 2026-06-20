@@ -1,8 +1,51 @@
-# AGENT PEAKY — RESUME HERE (updated 2026-06-20, session 3)
+# AGENT PEAKY — RESUME HERE (updated 2026-06-20, session 4)
 
 **Project:** consolidate the Mascope pipeline into ONE scalable, shareable Claude Code
 skill ("peaky"): representative-sample assignment → merge → time-series clustering →
 figures → PDF report. Memory: `agent-peaky` (+ `mascope-sdk-knowledge`, `mascope-assign-package`).
+
+**SESSION 4 — SHAREABILITY REFACTOR (2026-06-20). Goal: a small group `pip install`s + validates on
+THEIR machines.** A 7-dimension review (48 findings) produced a 5-phase plan. DECISIONS: ship as BOTH a
+pip CLI + a portable Claude skill; **mascope-sdk is on PUBLIC PyPI (MIT) → now a CORE dependency** (a plain
+`pip install` pulls it, no private index); validators need desktop Claude Code + creds, **NO custom shell
+MCP** (built-in Bash, or the CLI in a terminal, is the host-exec path; the cowork `mcp__shell__run_command`
+is an author-sandbox artifact); NO3⁻ reagent to be added before ship → reagent profiles must become
+config-expandable; Orange Ur+Br shareable as the offline demo. Data path LIVE-VERIFIED via host Python
+(`mascope-assign list datasets` → 35; "Aleksei's workspace" → "<dataset>" → <sample-id>,
+961 peaks).
+- **Phase 0 DONE — installable.** `pyproject.toml` (PEP 621 / hatchling; deps pinned, mascope-sdk core,
+  `[dev]`=pytest), `requirements.txt` lock, public LAZY `__init__.py` v0.3.0 (run / run_batch / run_pipeline
+  / PassConfig / get_context / resolve_reagent / ReagentProfile / build_report + __version__), `.env.example`
+  (+ `.gitignore` `!.env.example`). Creds docs unified to `~/.mascope/.env` (io_mascope docstring + README +
+  SKILL) + `$MASCOPE_ENV` override + an actionable `connect()` error. `pip install -e .` verified from /tmp.
+- **Phase 1 DONE — one CLI + safety.** `mascope_assign/cli.py` + `__main__.py`; `[project.scripts]
+  mascope-assign`. Subcommands: `list datasets|batches|samples` (discovery — `io_mascope.list_datasets`
+  / `list_batches` added), `assign` (+ **`--reagent` / `--adducts` / `--context` / `--env`** — closes the
+  silent positive-mode→[M-H]- mis-assignment blocker by forcing the profile's channels), `gka` (offline).
+  `gka_widget` moved into the package; `scripts/run_assignment.py` + `scripts/gka_widget.py` are now thin
+  back-compat shims. Fail-fast creds preflight + WAF-403 / 401 / stale-404 friendly errors. `test_cli.py`
+  (19 checks). **Suite 768 assertions / 27 files green.** README + SKILL run sections rewritten to the CLI;
+  SKILL execution language made tool-agnostic (built-in Bash, not the named MCP).
+- **Phase 2 DONE — scratch drivers folded into the package (byte-verified).** `mascope_assign/clustering.py`
+  `cluster_batch(out_dir, ts, profile)` (lift of run_clusters.py 244 LOC) + `analyte_viz.van_krevelen_batch`
+  + `timeseries.auto_bin_minutes` (shared bin heuristic). `pipeline.py` gained `RunContext` / `make_run_context`
+  / `generate_report` (offline cluster+VK+report) / `run_batch` (full assign→report) — replacing run_peaky.py's
+  `PEAKY_*` env-var + subprocess threading with ONE in-process object. CLI gained `batch` (full, live) +
+  `report` (offline regen). run_clusters.py / run_vankrevelen.py → thin shims; run_peaky.py rewritten over
+  generate_report (no env/subprocess). VERIFICATION (A/B old driver vs new fn, fixed SOURCE_DATE_EPOCH, Br):
+  cluster CSVs+PNGs+xlsx byte-identical (9 figs); VK CSV+2 PNGs byte-identical; **generate_report reproduces the
+  whole scratch chain byte-for-byte — 18 artifacts incl. the 6.95 MB PDF**. The PACKAGE now has NO {Ur,Br} maps
+  (functions read profile.label); the orange maps remain only in the orange-specific shims. test_clustering (8)
+  + RunContext (4). **Suite 780/28 green.** REMAINING: `mascope-assign batch` (full live path) is wired but not
+  yet LIVE-validated end-to-end (needs a ~40-min live assign run; WAF-prone) — once it is, DELETE the
+  orange-assign scratch shims. Deferred: thread assign_batch's computed maps through its return (the file-based
+  inter-stage contract is deterministic + verified, so low priority).
+- **NEXT = Phase 3 (test compat / CI / determinism):** guard the test-runner tails so `pytest tests/` works
+  (today it INTERNALERRORs on the module-level `sys.exit`), add a no-network `test_smoke.py`, add a GitHub
+  Actions CI run with NO creds (enforces the offline guarantee), add a PDF/PNG determinism regression test.
+  Then Phase 4 (QUICKSTART, `--demo` offline data from the Orange batches, an NO3⁻ profile + config-driven
+  `--reagent-config`, `ClusterConfig`, polarity-aware `cleanup.py`). Keep the suite green + report bytes stable.
+  **Nothing committed yet (commit on the user's request), then create the private GitHub remote.**
 
 **REPORT CRITICAL-REVIEW FIXES (session 3, 2026-06-20) — committed, reports regenerated.**
 A 6-dimension adversarial review of the Ur/Br PDFs surfaced two genuinely misleading

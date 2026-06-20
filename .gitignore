@@ -4,6 +4,7 @@ __pycache__/
 # secrets & data (never commit)
 .env
 .env.*
+!.env.example
 *.parquet
 *.npy
 *.log

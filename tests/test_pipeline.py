@@ -8,6 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from mascope_assign import pipeline as PL  # noqa: E402
+from mascope_assign import profiles as P  # noqa: E402
 
 PASS = FAIL = 0
 def check(name, cond, detail=""):
@@ -43,6 +44,19 @@ with tempfile.TemporaryDirectory() as d:
     check("make_run_dir: name carries the batch, the date AND the UTC time",
           "Orange-peeling-Br-CIMS" in os.path.basename(rd)
           and "2026-06-20" in os.path.basename(rd) and "143512Z" in os.path.basename(rd))
+
+# RunContext / make_run_context: one `when` -> consistent folder / id / cover stamp
+with tempfile.TemporaryDirectory() as d:
+    ctx = PL.make_run_context(d, "Orange peeling (Br- CIMS)", P.BR, when=WHEN)
+    check("make_run_context: run_id == folder basename == run_id(when)",
+          ctx.run_id == os.path.basename(ctx.out_dir) == PL.run_id("Orange peeling (Br- CIMS)", WHEN),
+          ctx.run_id)
+    check("make_run_context: tag/label from the profile",
+          ctx.tag == "Br" and ctx.label == P.BR.label, (ctx.tag, ctx.label))
+    check("make_run_context: generated is the UTC human stamp",
+          ctx.generated == "2026-06-20 14:35 UTC", ctx.generated)
+    check("make_run_context: out_dir created, profile attached",
+          os.path.isdir(ctx.out_dir) and ctx.profile is P.BR)
 
 print(f"\n{PASS} passed, {FAIL} failed")
 sys.exit(1 if FAIL else 0)

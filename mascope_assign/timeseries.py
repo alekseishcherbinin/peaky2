@@ -37,6 +37,17 @@ FLAT_CV = 0.25          # cv_norm below this == flat / background
 COVARY_R = 0.70         # correlation above this == co-varies with the family
 
 
+def auto_bin_minutes(ts: pd.DataFrame, *, target_bins: int = 50,
+                     time_col: str = "datetime_utc") -> int:
+    """Time-bin width (minutes) that gives ~target_bins bins across the batch span.
+    The default 30-min bin gives only ~3 bins on a short (~90-min) densely-sampled
+    batch; scale the bin to the actual span instead. Shared by the clustering and
+    Van Krevelen batch stages so they bin identically."""
+    t = pd.to_datetime(ts[time_col], utc=True)
+    span_min = (t.max() - t.min()).total_seconds() / 60.0
+    return max(1, int(round(span_min / target_bins)))
+
+
 # ---------------------------------------------------------------------------
 # matrix construction
 # ---------------------------------------------------------------------------

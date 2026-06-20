@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mascope-assign"
+version = "0.3.0"
+description = "Multi-pass chemical-formula assignment for high-resolution mass-spec peaks (Mascope / Karsa CIMS)."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Aleksei Scherbinin" }]
+keywords = ["mass-spectrometry", "CIMS", "peak-assignment", "van-krevelen", "mascope", "kendrick"]
+
+# Runtime dependencies. mascope-sdk is the live Mascope/Karsa connector (public
+# PyPI, MIT); `pip install` pulls/updates it like any other dep. It is imported
+# lazily inside io_mascope.connect(), so the offline test suite still makes NO
+# network calls even though the SDK is installed. A Mascope ACCOUNT/token is only
+# needed at run time — not to install or to run the offline tests.
+dependencies = [
+    "mascope-sdk>=2026.5",
+    "pandas>=2.1",
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "matplotlib>=3.7",
+    "openpyxl>=3.1",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+mascope-assign = "mascope_assign.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["mascope_assign"]
