@@ -89,16 +89,32 @@ def load_context(out_dir: str, *, tag: str, label: str, ts_path: str | None = No
         ctx["samples"] = list(zip(name.astype(str), s.get("role", pd.Series([""] * len(s))).astype(str)))
 
     # per-file pooled role breakdown (count + signal) + the explained m/z set
-    rows = []
+    rows, rep_ids = [], []
     for f in sorted(glob.glob(f"{out_dir}/per_file/*_ledger.csv")):
+        rep_ids.append(os.path.basename(f).replace("_ledger.csv", ""))
         d = pd.read_csv(f)
         d["h"] = pd.to_numeric(d.get("height"), errors="coerce").fillna(0)
         rows.append(d)
     ctx["n_files"] = len(rows)
+    ctx["rep_ids"] = rep_ids
     if rows:
         a = pd.concat(rows, ignore_index=True)
         ctx["role_count"] = a["role"].value_counts().to_dict()
         ctx["role_signal"] = {k: float(v) for k, v in a.groupby("role")["h"].sum().items()}
+        # signal share split into analyte (M0+iso) / reagent / unexplained — for an
+        # honest "explained" headline: a Br- spectrum is mostly the reagent ion, so
+        # "98% explained" must not read as "98% analyte characterised".
+        rs = ctx["role_signal"]; rtot = sum(rs.values()) or 1.0
+        ctx["role_signal_frac"] = {
+            "analyte": (rs.get("M0", 0) + rs.get("iso_child", 0)) / rtot,
+            "reagent": rs.get("reagent", 0) / rtot,
+            "unexplained": (rs.get("unexplained", 0) + rs.get("artifact", 0)) / rtot}
+        # per-neutral summed M0 signal (drives signal-weighted composition + findings)
+        if "neutral_formula" in a.columns:
+            m0a = a[a["role"] == "M0"]
+            ns = m0a.groupby(m0a["neutral_formula"].astype(str))["h"].sum()
+            ctx["neutral_signal"] = {k: float(v) for k, v in ns.items()
+                                     if k and k != "nan"}
         ctx["expl_mz"] = np.sort(a.loc[a["role"].astype(str) != "unexplained",
                                        "mz"].dropna().to_numpy())
         # mass error (ppm) by category for the accuracy plot
@@ -117,6 +133,23 @@ def load_context(out_dir: str, *, tag: str, label: str, ts_path: str | None = No
             asig = a[a["role"] == "M0"].groupby("adduct")["h"].sum()
             tot = float(asig.sum()) or 1.0
             ctx["adduct_signal"] = {k: float(v) / tot for k, v in asig.items()}
+
+    # signal-weighted composition + ammonium/amine degeneracy (composition page)
+    from . import composition as CMP
+    nsig = ctx.get("neutral_signal", {})
+    ctx["sig_comp_frac"], ctx["sig_comp_abs"] = CMP.signal_by_backbone(merged, nsig)
+    ctx["shadow"] = CMP.amine_shadow_stats(merged)
+    ctx["comp_asg"], ctx["comp_collapsed"], ctx["n_collapsed"] = CMP.collapsed_composition(merged)
+    ctx["top_species"] = CMP.top_species_by_signal(merged, nsig, n=8)
+    ctx["oligomers"] = CMP.oligomer_flag(merged)
+    # single source of truth for "formula disagreements": the merged ledger's own
+    # formula_agree column (the artifact the report publishes), with a denominator
+    # — not the separate jitter pass, which clusters differently and prints a
+    # slightly different number (the 65-vs-68 mismatch).
+    if "formula_agree" in merged.columns:
+        ctx["n_disagree"] = int((~merged["formula_agree"].astype(bool)).sum())
+    if "n_files" in merged.columns:
+        ctx["n_multifile"] = int((merged["n_files"] >= 2).sum())
 
     # whole-spectrum coverage (TS bins explained vs unexplained, count + signal)
     if ts_path and os.path.exists(os.path.expanduser(ts_path)):
@@ -138,6 +171,21 @@ def load_context(out_dir: str, *, tag: str, label: str, ts_path: str | None = No
         ctx["ts"] = {"nbins": int(len(ex)), "expl_count": int(ex.sum()),
                      "expl_signal": float(binsig.values[ex].sum()),
                      "tot_signal": float(binsig.sum())}
+        # event overview: per-sample total signal vs wall-clock over the FULL batch
+        # (the reader needs to SEE the burst; the cluster pages only show a
+        # normalised 0-1 'hour' axis). Mark where the representative files sit.
+        try:
+            tt = pd.to_datetime(ts["datetime_utc"], utc=True)
+            tstamp = tt.groupby(ts["sample_item_id"]).first()
+            order = tstamp.sort_values().index
+            t0 = tstamp.min()
+            hrs = (tstamp.reindex(order) - t0).dt.total_seconds().to_numpy() / 3600.0
+            tot = mat.reindex(order).sum(axis=1).to_numpy()
+            rep_h = [float((tstamp[r] - t0).total_seconds() / 3600.0)
+                     for r in ctx.get("rep_ids", []) if r in tstamp.index]
+            ctx["event"] = {"hours": hrs, "total": tot, "rep_hours": rep_h}
+        except Exception:
+            pass
 
     for key, fn in [("jitter", "jitter_summary.json"), ("batch", "batch_summary.json")]:
         p = f"{out_dir}/{fn}"
@@ -301,6 +349,11 @@ def cover(ctx, pdf):
             ("b", f"Unexplained:                      {ts['nbins']-ts['expl_count']} bins "
                   f"({100-ex_c:.0f}% count, {100-sig:.0f}% signal)"),
         ]
+        rf = ctx.get("role_signal_frac", {})
+        if rf.get("reagent", 0) >= 0.05:        # reagent-dominated (e.g. Br-): be honest
+            head += [("dim", "   of detected signal:  analyte (M0+iso) "
+                             f"{rf['analyte']*100:.0f}%,  reagent ion {rf['reagent']*100:.0f}%,  "
+                             f"unexplained {rf['unexplained']*100:.0f}%")]
     head += [
         ("gap", 1),
         ("h", "Representative samples assigned"),
@@ -312,6 +365,13 @@ def cover(ctx, pdf):
         head.append(("m", f"   {name}   [{role}]"))
     j = ctx.get("jitter", {})
     if j:
+        nm = ctx.get("n_multifile")
+        nd = ctx.get("n_disagree", j.get("formula_disagreements", "?"))
+        tu = j.get("tier_unstable", "?")
+        dis = (f"{nd} of {nm} multi-file ({_pct(nd, nm):.0f}%)"
+               if nm and isinstance(nd, int) else f"{nd}")
+        tus = (f"{tu} of {nm} multi-file ({_pct(tu, nm):.0f}%)"
+               if nm and isinstance(tu, int) else f"{tu}")
         head += [
             ("gap", 1),
             ("h", "File-to-file reproducibility"),
@@ -319,14 +379,74 @@ def cover(ctx, pdf):
             ("b", f"Per-file calibration spread:  {j.get('offset_spread_ppm','?')} ppm"),
             ("b", f"Mass jitter (median / p95):   {j.get('mz_jitter_raw_median','?')} / "
                   f"{j.get('mz_jitter_raw_p95','?')} ppm  (≈ genuine peak noise)"),
-            ("b", f"Formula disagreements:        {j.get('formula_disagreements','?')}  "
-                  "(same m/z, different formula across files)"),
-            ("b", f"Tier-unstable assignments:    {j.get('tier_unstable','?')}  "
-                  "(flip Identified <-> Candidate across files)"),
+            ("b", f"Formula disagreements:        {dis}  (same m/z, different formula)"),
+            ("b", f"Tier-unstable assignments:    {tus}  (flip Identified <-> Candidate)"),
             ("dim", "On a disagreement/flip the merge keeps the highest tier, then the "
                     "highest match score."),
         ]
     _text_lines(fig, head, y0=0.80, dy=0.029)
+    _close(pdf, fig)
+
+
+def findings(ctx, pdf):
+    """Plain-language findings page (right after the cover): the event time-trace
+    plus data-driven takeaways — top species by signal, signal-weighted
+    composition, and the oligomer/HOM fingerprint. Answers 'what changed during
+    the run?' before the QC detail. Everything is derived from the data, so it
+    works for any batch."""
+    import matplotlib.pyplot as plt
+    ev = ctx.get("event"); top = ctx.get("top_species", [])
+    scf = ctx.get("sig_comp_frac", {}); olig = ctx.get("oligomers", [])
+    if not (ev or top):
+        return
+    fig = plt.figure(figsize=A4)
+    fig.text(0.08, 0.955, "Findings", fontsize=16, weight="bold", color=INK)
+    rise_txt = None
+    if ev and len(ev.get("total", [])):
+        ax = fig.add_axes([0.10, 0.60, 0.82, 0.27])
+        h = np.asarray(ev["hours"], float); tt = np.asarray(ev["total"], float)
+        ax.plot(h, tt, color="#1D9E75", lw=1.5)
+        ax.fill_between(h, tt, color="#1D9E75", alpha=0.12)
+        for rh in ev.get("rep_hours", []):
+            ax.axvline(rh, color="#888", lw=0.7, ls=":")
+        ax.set_xlabel("hour of experiment (UTC)", fontsize=9)
+        ax.set_ylabel("total signal (cps)", fontsize=9)
+        ax.set_title("Event overview — total signal vs time (dotted = assigned samples)",
+                     loc="left", fontsize=10.5)
+        ax.grid(alpha=0.3)
+        ok = np.isfinite(tt)
+        if ok.sum() >= 3:
+            tail = tt[ok][max(1, int(ok.sum() * 2 / 3)):]
+            base = float(np.median(tail)) if len(tail) else float(np.median(tt[ok]))
+            peak = float(np.nanmax(tt)); pk_h = float(h[int(np.nanargmax(tt))])
+            if base > 0:
+                rise_txt = (f"Total signal peaks at hour {pk_h:.1f} — {peak/base:.1f}x the "
+                            f"late-run baseline — then decays (a transient event).")
+    lines = []
+    if rise_txt:
+        lines += [("b", "• " + rise_txt)]
+    if scf:
+        cc = ctx.get("comp_asg", {}); nn = ctx.get("n_neutrals", 1)
+        cho = scf.get("CHO", 0) * 100; chon = scf.get("CHON", 0) * 100
+        lines += [("b", f"• By signal the assigned chemistry is {cho:.0f}% CHO / {chon:.0f}% CHON"
+                        f" — vs {_pct(cc.get('CHON', 0), nn):.0f}% CHON by compound count"),
+                  ("b", "  (the count is inflated by mass-degenerate ammonium/amine re-reads; "
+                        "see Composition).")]
+    if top:
+        lines += [("gap", 0.6), ("h", "Top species by signal"), ("gap", 0.25),
+                  ("m", "   share   class   neutral")]
+        for r in top[:8]:
+            lines.append(("m", f"   {r['frac']*100:>4.1f}%   {r['klass']:5s}   {r['neutral_formula']}"))
+    if olig:
+        nsig = ctx.get("neutral_signal", {})
+        olig = sorted(olig, key=lambda f: nsig.get(f, 0.0), reverse=True)[:12]
+        lines += [("gap", 0.6), ("h", "Accretion / oligomer products (high C & O, by signal)"),
+                  ("gap", 0.25)]
+        for k in range(0, len(olig), 6):           # wrap ~6 formulas per line (no edge clip)
+            lines.append(("m", "   " + ", ".join(olig[k:k + 6])))
+        lines += [("dim", "high-carbon high-oxygen neutrals — candidate HOM dimers / oligomers,"),
+                  ("dim", "often the most event-specific signal.")]
+    _text_lines(fig, lines, y0=0.52, dy=0.027, size=9.5)
     _close(pdf, fig)
 
 
@@ -359,18 +479,29 @@ def coverage(ctx, pdf):
     ax2.set_ylabel("mass error (ppm)", fontsize=9)
     ax2.set_title("Mass accuracy", loc="left", fontsize=11)
 
-    # (c) assigned vs unassigned (restored) — count + signal
-    ts = ctx.get("ts")
+    # (c) signal & peak share by ROLE — analyte (M0+iso) / reagent ion / unexplained.
+    # Splitting out the reagent is the honest "explained" picture: a Br- spectrum is
+    # mostly the reagent ion, so a single "98% explained" number is misleading.
+    rc = ctx.get("role_count", {}); rs = ctx.get("role_signal", {})
+    def _roles(d):
+        tot = sum(d.values()) or 1.0
+        return (100 * (d.get("M0", 0) + d.get("iso_child", 0)) / tot,
+                100 * d.get("reagent", 0) / tot,
+                100 * (d.get("unexplained", 0) + d.get("artifact", 0)) / tot)
     ax3 = fig.add_axes([0.11, 0.47, 0.33, 0.17])
-    if ts:
-        ec = _pct(ts["expl_count"], ts["nbins"]); es = _pct(ts["expl_signal"], ts["tot_signal"])
-        ax3.barh([1, 0], [ec, es], color="#1D9E75")
-        ax3.barh([1, 0], [100 - ec, 100 - es], left=[ec, es], color="#D85A30")
-        for y, v in zip([1, 0], [ec, es]):
-            ax3.text(v - 2, y, f"{v:.0f}%", va="center", ha="right", fontsize=8, color="white")
+    if rc or rs:
+        for y, d in zip([1, 0], [rc, rs]):
+            an, rg, ot = _roles(d)
+            ax3.barh(y, an, color="#1D9E75")
+            ax3.barh(y, rg, left=an, color="#378ADD")
+            ax3.barh(y, ot, left=an + rg, color="#D85A30")
+            for v, x in ((an, an / 2), (rg, an + rg / 2), (ot, an + rg + ot / 2)):
+                if v >= 7:
+                    ax3.text(x, y, f"{v:.0f}", va="center", ha="center", fontsize=7, color="white")
         ax3.set_yticks([1, 0]); ax3.set_yticklabels(["by count", "by signal"], fontsize=9)
-        ax3.set_xlim(0, 100); ax3.set_xlabel("% explained / unexplained", fontsize=9)
-    ax3.set_title("Assigned vs unassigned", loc="left", fontsize=11)
+        ax3.set_xlim(0, 100)
+        ax3.set_xlabel("% — green analyte · blue reagent · red unexpl.", fontsize=7.3)
+    ax3.set_title("Signal & peaks by role", loc="left", fontsize=11)
 
     # (d) assignments by ACTUAL ion channel (which adduct each peak was assigned on)
     adc = ctx.get("adduct_counts", {}); asig = ctx.get("adduct_signal", {})
@@ -397,37 +528,64 @@ def coverage(ctx, pdf):
              ("b", "  signal % on the bars (e.g. protonation usually dominates the signal)."),
              ("b", "• Unexplained peaks are a third of the m/z bins but only a few % of the signal "
                    "(dim, near-noise)."),
-             ("dim", "[M+NH4]+ is mass/isotope-identical to [M+H]+ of the +NH3 amine -- kept as NH4 only"),
-             ("dim", "when its trace co-varies (r>=0.7) with the protonated/urea parent, else re-read as the"),
-             ("dim", "amine (a parsimony prior, not a measurement). Peak roles -> Methods page.")]
+             ("b", "• 'By role' splits explained signal into analyte (M0 + isotopes) vs the reagent "
+                   "ion vs unexplained —"),
+             ("b", "  so a reagent-dominated negative-mode spectrum isn't read as fully characterised.")]
+    # the NH4->amine caveat only applies to positive urea-CIMS (where NH4 adducts
+    # exist); never print it on a negative-mode (e.g. Br-) report.
+    pos = any(("NH4" in str(k)) or ("CH4N2O" in str(k)) for k in ctx.get("adduct_counts", {}))
+    if pos:
+        lines += [("dim", "[M+NH4]+ is mass/isotope-identical to [M+H]+ of the +NH3 amine -- kept as NH4 only"),
+                  ("dim", "when its trace co-varies (r>=0.7) with the protonated/urea parent, else re-read as the"),
+                  ("dim", "amine (a parsimony prior, not a measurement). Peak roles -> Methods page.")]
+    else:
+        lines += [("dim", "Peak roles are defined on the Methods page.")]
     _text_lines(fig, lines, y0=0.36, dy=0.029)
     _close(pdf, fig)
 
 
 def composition(ctx, pdf):
-    if "vk" in ctx["fig"]:
-        _image_page(pdf, ctx["fig"]["vk"], "")          # figure carries its own title
     import matplotlib.pyplot as plt
-    fig = plt.figure(figsize=A4)
-    fig.text(0.08, 0.93, "Composition of the assigned peaks", fontsize=15, weight="bold", color=INK)
+    fig = plt.figure(figsize=A4)            # text page FIRST, then the VK figure
+    fig.text(0.08, 0.95, "Composition of the assigned peaks", fontsize=15, weight="bold", color=INK)
     comp = ctx.get("composition", {})
     het = ctx.get("hetero", {})
+    scf = ctx.get("sig_comp_frac", {})
     lines = [("h", f"Distinct neutral compounds by backbone ({ctx['n_neutrals']} total)"),
-             ("gap", 0.3)]
+             ("gap", 0.3),
+             ("dim", "by COUNT — each compound once, regardless of how bright it is")]
     for kl in ("CHO", "CHON", "CHOS"):
         if kl in comp:
-            lines.append(("m", f"   {kl:6s} {comp[kl]}"))
-    lines += [("gap", 1),
+            lines.append(("m", f"   {kl:6s} {comp[kl]:>4}   ({_pct(comp[kl], ctx['n_neutrals']):.0f}%)"))
+    if scf:
+        lines += [("gap", 0.8),
+                  ("h", "Same compounds, weighted by signal"),
+                  ("gap", 0.3),
+                  ("dim", "where the chemistry actually is — a few bright species carry most signal")]
+        for kl in ("CHO", "CHON", "CHOS"):
+            if kl in scf:
+                lines.append(("m", f"   {kl:6s} {scf[kl]*100:>3.0f}% of assigned signal"))
+    sh = ctx.get("shadow", {}); coll = ctx.get("comp_collapsed", {})
+    if sh.get("n_shadowed"):
+        lines += [("gap", 0.8),
+                  ("dim", f"Note: {sh['n_shadowed']} CHON neutrals share an exact NH3-shifted CHO twin that is"),
+                  ("dim", "also assigned — mass-degenerate [M+NH4]+/[M+H]+ pairs from the amine re-read,"),
+                  ("dim", f"counted twice. Read as their CHO parent: {coll.get('CHO','?')} CHO / "
+                          f"{coll.get('CHON','?')} CHON ({sh['collapsed_neutrals']} distinct).")]
+    lines += [("gap", 0.8),
               ("h", "Heteroatom additions (within the backbone classes above)"),
               ("gap", 0.3)]
     for k, v in het.items():
         lines.append(("m", f"   {k:24s} {v}"))
-    lines += [("gap", 1),
-              ("dim", "Si/F/halogen are folded into the CHO/CHON/CHOS backbone, not split out"),
+    present = "/".join(k for k in ("CHO", "CHON", "CHOS") if k in comp)
+    lines += [("gap", 0.8),
+              ("dim", f"Si/F/halogen are folded into the {present} backbone, not split out"),
               ("dim", "(a siloxane with no N is CHO; a fluorinated species with N is CHON)."),
               ("dim", "Si = PDMS/silicone inlet bleed; F/halogen are reagent/contaminant ladders.")]
-    _text_lines(fig, lines, y0=0.86, dy=0.030)
+    _text_lines(fig, lines, y0=0.89, dy=0.028)
     _close(pdf, fig)
+    if "vk" in ctx["fig"]:
+        _image_page(pdf, ctx["fig"]["vk"], "")          # figure carries its own title
 
 
 def gka(ctx, pdf):
@@ -505,8 +663,11 @@ def methods(ctx, pdf):
         ("b", "  misses analytes present only part of the run."),
         ("b", "• Each file: multi-pass formula assignment, server isotope-scored matching"),
         ("b", "  (match_compounds), isotope-envelope completion, calibrated tiering."),
-        ("b", "• Clusters: TIC/reagent-normalised log-correlation, complete-linkage at r>0.6"),
-        ("b", "  on the full-batch time series (signed distance keeps anti-phase apart)."),
+        ("b", "• Clusters: log-correlation (raw or reagent-normalised) of the full-batch"),
+        ("b", "  time series, complete-linkage at r>0.6 (signed distance keeps anti-phase apart)."),
+        ("gap", 0.5),
+        ("dim", f"Parameters: m/z merge tol {ctx.get('batch', {}).get('tol_ppm', 6.0)} ppm · "
+                "cluster r>0.6 · amine co-variation r>=0.7."),
         ("gap", 1),
         ("h", "Peak roles"), ("gap", 0.3),
         ("b", "• M0 = an assigned compound's monoisotopic peak (the identification)."),
@@ -521,13 +682,23 @@ def methods(ctx, pdf):
         ("b", "• Confidence (Identified/Candidate) applies to M0 compounds only."),
         ("b", "• Mass-degenerate peaks can flip formula across files (see jitter)."),
     ]
-    _text_lines(fig, lines, y0=0.86, dy=0.028)
+    rf = ctx.get("role_signal_frac", {})
+    if rf.get("reagent", 0) >= 0.05:
+        lines += [("b", f"• The reagent ion carries ~{rf['reagent']*100:.0f}% of the signal; "
+                        "'explained signal'"),
+                  ("b", "  is split into analyte vs reagent on the quality page.")]
+    if any(("NH4" in str(k)) or ("CH4N2O" in str(k)) for k in ctx.get("adduct_counts", {})):
+        lines += [("b", "• Positive urea-CIMS: [M+NH4]+ adducts are mass/isotope-identical to the"),
+                  ("b", "  protonated +NH3 amine; uncorroborated ones are re-read as the amine"),
+                  ("b", "  (co-variation r>=0.7), which raises the CHON count — a parsimony prior,"),
+                  ("b", "  not a measurement (see Composition for the degeneracy it leaves).")]
+    _text_lines(fig, lines, y0=0.88, dy=0.026)
     if ctx.get("generated"):
         fig.text(0.08, 0.06, f"mascope_assign · generated {ctx['generated']}", fontsize=8, color=GREY)
     _close(pdf, fig)
 
 
-SECTIONS = [cover, coverage, composition, gka, families, changers, clusters, methods]
+SECTIONS = [cover, findings, coverage, composition, gka, families, changers, clusters, methods]
 
 
 def build(out_dir: str, *, tag: str, label: str, ts_path: str | None = None,

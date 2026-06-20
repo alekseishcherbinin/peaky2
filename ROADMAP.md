@@ -1,8 +1,36 @@
-# AGENT PEAKY — RESUME HERE (updated 2026-06-19, session 2)
+# AGENT PEAKY — RESUME HERE (updated 2026-06-20, session 3)
 
 **Project:** consolidate the Mascope pipeline into ONE scalable, shareable Claude Code
 skill ("peaky"): representative-sample assignment → merge → time-series clustering →
 figures → PDF report. Memory: `agent-peaky` (+ `mascope-sdk-knowledge`, `mascope-assign-package`).
+
+**REPORT CRITICAL-REVIEW FIXES (session 3, 2026-06-20) — committed, reports regenerated.**
+A 6-dimension adversarial review of the Ur/Br PDFs surfaced two genuinely misleading
+headline numbers + a missing science narrative; all fixed in-package (presentation only,
+no live re-run — regenerated from the canonical orange-assign/<tag>/ ledgers via run_peaky.py):
+- **NEW `mascope_assign/composition.py`** (pure; test_composition.py 24): `signal_by_backbone`
+  (intensity-weighted CHO/CHON/CHOS), `amine_shadow_stats`/`collapsed_composition` (the
+  [M+NH4]+(CHO) vs [M+H]+(amine X+NH3) degeneracy — 243 of 414 Ur CHON share an exact NH3-shifted
+  CHO twin counted twice → 639 distinct collapsed), `top_species_by_signal`, `oligomer_flag`
+  (C18-40 & O≥7 HOM-dimer candidates).
+- **`pdf_report.py`**: (1) NEW `findings` SECTION (page 2, after cover) — event-TIC of the full
+  batch (total signal vs wall-clock, rep samples ticked) + data-driven takeaways: event rise×,
+  signal-weighted composition (Ur **94% CHO by signal vs 47% CHON by count** — the key correction),
+  top species (C10H16O2=16%, the limonene-oxidation ladder), oligomer/HOM line (signal-sorted,
+  wrapped). (2) coverage page "Signal & peaks by ROLE" splits explained signal into
+  analyte(M0+iso)/reagent/unexplained — Br "98% explained" cover now annotated "analyte 35% /
+  reagent 61% / unexplained 4%" (the reagent-dominated-signal fix). (3) NH4→amine caveat GATED to
+  positive mode (was wrongly printed on Br negative report). (4) cover formula-disagreements now
+  read from the merged ledger's own `formula_agree` (68, authoritative) with a denominator/rate —
+  fixes the 65-vs-68 jitter-vs-ledger mismatch. (5) composition page: count + signal-weighted +
+  two-way shadow disclosure; text now BEFORE the VK figure. (6) methods page documents the amine
+  re-read + a parameters line (tol 6.0ppm · cluster r>0.6 · amine r≥0.7) + reagent-signal caveat.
+- SECTIONS now `[cover, findings, coverage, composition, gka, families, changers, clusters, methods]`.
+  Both reports rebuilt → `~/mascope-output/peaky/Orange-peeling-{Ur,Br}-CIMS_2026-06-20T1105*Z/`.
+  Full suite green (25 files). **NOT yet folded:** the enrichment(event/tail)-colored VK (still
+  scratch), formula priors (N-cap/H-C floor/halogen-in-Ur guard for the N-monsters + C10H18Br2O12),
+  background-family tagging (saturated diester/glycol leak into co-varying families), and the
+  batch_summary offsets_ppm=null (IO.estimate_offset returns None; jitter has the real offsets).
 
 **Data path:** SDK-over-shell, creds at `~/.mascope/.env`; `io_mascope.connect()` reads the
 live file (the `mcp__mascope__*` tools hold a stale token). **<server> is behind a Cloudflare

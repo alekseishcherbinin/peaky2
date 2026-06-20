@@ -19,12 +19,15 @@ def check(name, cond, detail=""):
 
 with tempfile.TemporaryDirectory() as d:
     os.makedirs(f"{d}/per_file", exist_ok=True)
-    # minimal merged ledger (M0 rows) spanning a few classes
+    # minimal merged ledger (M0 rows) spanning a few classes; C10H19NO2 is the
+    # NH3-shifted shadow of C10H16O2 (the ammonium/amine degeneracy), and one row
+    # has formula_agree=False (drives the single-source disagreement count).
     pd.DataFrame([
-        dict(mz=169.1223, neutral_formula="C10H16O2", adduct="[M+H]+", tier="Identified", ion_score=0.9),
-        dict(mz=183.0, neutral_formula="C9H10N2O", adduct="[M+H]+", tier="Candidate", ion_score=0.6),
-        dict(mz=223.06, neutral_formula="C6H18O3Si3", adduct="[M+H]+", tier="Candidate", ion_score=0.5),
-        dict(mz=247.0, neutral_formula="C3H2F6O", adduct="[M+Br]-", tier="Identified", ion_score=0.8),
+        dict(mz=169.1223, neutral_formula="C10H16O2", adduct="[M+H]+", tier="Identified", ion_score=0.9, n_files=6, formula_agree=True),
+        dict(mz=200.0, neutral_formula="C10H19NO2", adduct="[M+NH4]+", tier="Candidate", ion_score=0.7, n_files=3, formula_agree=False),
+        dict(mz=183.0, neutral_formula="C9H10N2O", adduct="[M+H]+", tier="Candidate", ion_score=0.6, n_files=2, formula_agree=True),
+        dict(mz=223.06, neutral_formula="C6H18O3Si3", adduct="[M+H]+", tier="Candidate", ion_score=0.5, n_files=1, formula_agree=True),
+        dict(mz=247.0, neutral_formula="C3H2F6O", adduct="[M+Br]-", tier="Identified", ion_score=0.8, n_files=4, formula_agree=True),
     ]).to_csv(f"{d}/merged_ledger.csv", index=False)
     # one per-file ledger with roles (drives the role breakdown)
     pd.DataFrame([
@@ -38,7 +41,7 @@ with tempfile.TemporaryDirectory() as d:
                   "median_cps": [9000, 4000, 2000]}).to_csv(f"{d}/clusters_changing_Ur.csv", index=False)
 
     ctx = R.load_context(d, tag="Ur", label="Ur⁺ CIMS")
-    check("load_context: merged loaded", ctx["n_m0"] == 4, ctx.get("n_m0"))
+    check("load_context: merged loaded", ctx["n_m0"] == 5, ctx.get("n_m0"))
     check("load_context: tiers counted", ctx["tiers"].get("Identified") == 2, ctx["tiers"])
     check("load_context: composition is CHO/CHON/CHOS backbone",
           set(ctx["composition"]) <= {"CHO", "CHON", "CHOS"}, ctx["composition"])
@@ -49,6 +52,25 @@ with tempfile.TemporaryDirectory() as d:
           ctx.get("adduct_counts"))
     check("load_context: role breakdown present", "unexplained" in ctx.get("role_count", {}),
           ctx.get("role_count"))
+    check("load_context: role-signal split (analyte/reagent/unexplained)",
+          set(ctx.get("role_signal_frac", {})) == {"analyte", "reagent", "unexplained"},
+          ctx.get("role_signal_frac"))
+    check("load_context: signal-weighted composition present",
+          "CHO" in ctx.get("sig_comp_frac", {}), ctx.get("sig_comp_frac"))
+    check("load_context: amine-shadow detected (C10H19NO2 = C10H16O2+NH3)",
+          ctx.get("shadow", {}).get("n_shadowed") == 1, ctx.get("shadow"))
+    check("load_context: two-way collapsed composition present",
+          ctx.get("n_collapsed") == 1, ctx.get("n_collapsed"))
+    check("load_context: single-source disagreements from formula_agree (=1)",
+          ctx.get("n_disagree") == 1 and ctx.get("n_multifile") == 4,
+          (ctx.get("n_disagree"), ctx.get("n_multifile")))
+    check("load_context: top species by signal carries the bright CHO",
+          ctx.get("top_species") and ctx["top_species"][0]["neutral_formula"] == "C10H16O2",
+          ctx.get("top_species"))
+    # findings section builds without an event TS (degrades gracefully)
+    out_f = R.build(d, tag="Ur", label="Ur⁺ CIMS", out_pdf=f"{d}/rf.pdf",
+                    sections=[R.findings])
+    check("build: findings section standalone OK", os.path.exists(out_f) and os.path.getsize(out_f) > 1500)
 
     out = R.build(d, tag="Ur", label="Ur⁺ CIMS", generated="2026-01-01")
     check("build: PDF created", os.path.exists(out), out)
