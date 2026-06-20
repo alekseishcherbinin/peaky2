@@ -106,11 +106,12 @@ def _resolve_reagent(args):
     adducts=None means 'let assign.run auto-detect from the sample'."""
     from . import profiles
 
+    config = getattr(args, "reagent_config", None)
     if args.adducts:
         return list(args.adducts), (args.context or "ambient-air"), \
             f"forced adducts={list(args.adducts)}"
     if args.reagent and args.reagent.lower() != "auto":
-        prof = profiles.resolve(args.reagent)        # name/alias, no peaks needed
+        prof = profiles.resolve(args.reagent, config=config)   # name/alias, no peaks needed
         return list(prof.adducts), (args.context or prof.context), \
             f"{prof.name} ({prof.label})"
     # auto: detect from the sample's own peaks (cached, so assign.run reuses it)
@@ -119,7 +120,7 @@ def _resolve_reagent(args):
     client = IO.connect()
     raw = IO.fetch_peaks(client, args.sample_id, use_cache=not args.no_cache)
     try:
-        prof = profiles.resolve("auto", raw)
+        prof = profiles.resolve("auto", raw, config=config)
         return list(prof.adducts), (args.context or prof.context), \
             f"auto-detected {prof.name} ({prof.label})"
     except Exception as e:                           # noqa: BLE001
@@ -191,7 +192,8 @@ def cmd_batch(args) -> None:
 
     res = PL.run_batch(batch=args.batch, dataset=args.dataset, reagent=args.reagent,
                        base_out=os.path.expanduser(args.out_dir), ts=args.ts,
-                       subject=args.subject, do_report=not args.no_report)
+                       subject=args.subject, do_report=not args.no_report,
+                       config=args.reagent_config)
     ctx = res["ctx"]
     print(f"\n[batch] done -> {ctx.out_dir}")
     if res.get("report_pdf"):
@@ -253,6 +255,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="explicit analyte adduct channels (overrides --reagent)")
     pa.add_argument("--context", default=None,
                     help="plausibility context (default = the reagent profile's context)")
+    pa.add_argument("--reagent-config", default=None,
+                    help="JSON/TOML file registering extra reagent profiles")
     pa.add_argument("--ppm", type=float, default=1.0)
     pa.add_argument("--search-ppm", type=float, default=3.0)
     pa.add_argument("--height-cutoff", type=float, default=100.0)
@@ -271,6 +275,8 @@ def build_parser() -> argparse.ArgumentParser:
     pb.add_argument("--batch", required=True, help="sample-batch name")
     pb.add_argument("--dataset", default=None, help="dataset (workspace) name")
     pb.add_argument("--reagent", default="auto", help="auto | Br | Ur | NO3 | ...")
+    pb.add_argument("--reagent-config", default=None,
+                    help="JSON/TOML file registering extra reagent profiles")
     pb.add_argument("--out-dir", default="~/mascope-output",
                     help="base output dir (a versioned run folder is created under it)")
     pb.add_argument("--ts", default=None,

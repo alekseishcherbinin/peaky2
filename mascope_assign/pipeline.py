@@ -192,7 +192,8 @@ def generate_report(ctx: RunContext, ts, *, subject: str | None = None,
 
 def run_batch(*, batch: str, dataset: str | None = None, reagent: str = "auto",
               base_out: str, ts=None, when=None, subject: str | None = None,
-              amine_r_min: float = 0.7, do_report=True, log=print, **assign_kw) -> dict:
+              amine_r_min: float = 0.7, do_report=True, config: str | None = None,
+              log=print, **assign_kw) -> dict:
     """Full batch pipeline in ONE call: representative-sample ASSIGN (live
     match_compounds) -> merge -> cluster figures -> Van Krevelen -> PDF report,
     into one versioned run folder. `ts` is the full-batch per-sample peak time
@@ -205,7 +206,7 @@ def run_batch(*, batch: str, dataset: str | None = None, reagent: str = "auto",
     if ts is None:
         log(f"[batch] fetching full-batch time series for {batch!r} ...")
         ts = load(batch=batch, dataset=dataset)
-    prof = P.resolve(reagent, ts)
+    prof = P.resolve(reagent, ts, config=config)
     ctx = make_run_context(base_out, batch, prof, when=when, dataset=dataset)
     log(f"[batch] {ctx.run_id} -> {ctx.out_dir}")
 

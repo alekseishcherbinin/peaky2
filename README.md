@@ -1,5 +1,7 @@
 # mascope-peak-assign — developer / iteration guide
 
+> **Validating this on your own Mascope data? Start with [QUICKSTART.md](QUICKSTART.md).**
+
 From-scratch, test-driven successor to `mascope-formula-assignment`. This dir is
 the canonical home: edit here, run tests here, ship here. (An earlier scratch
 copy may still exist at `~/mascope-assign` — ignore/delete it; this is the one.)

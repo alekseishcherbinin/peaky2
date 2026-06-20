@@ -42,13 +42,77 @@ UR = ReagentProfile(
     detect_adduct="[M+(CH4N2O)H]+", context="uronium",
     aliases=("ur", "uronium", "urea", "urea-cims", "ur+"))
 
-PROFILES: dict[str, ReagentProfile] = {BR.name: BR, UR.name: UR}
+# NO3⁻ (nitrate) CIMS — PROVISIONAL built-in; validate + refine for your instrument
+# (or override via a --reagent-config file). Negative mode; highly oxygenated
+# molecules detected as the [M+NO3]⁻ cluster (and [M-H]⁻ when acidic). Reagent ions
+# are the NO3⁻ / (HNO3)ₙ·NO3⁻ cluster series.
+NO3 = ReagentProfile(
+    name="NO3", label="NO₃⁻ CIMS", polarity="-",
+    adducts=["[M+NO3]-", "[M-H]-"],
+    normaliser="reagent", reagent_ion_re=r"(HNO3)*NO3-?$",
+    ranges="C0-40 H0-60 N0-3 O0-25 S0-2",
+    detect_adduct="[M+NO3]-", context="ambient-air",
+    aliases=("no3", "nitrate", "no3-", "nitrate-cims"))
+
+PROFILES: dict[str, ReagentProfile] = {BR.name: BR, UR.name: UR, NO3.name: NO3}
 _BY_ALIAS = {a: p for p in PROFILES.values() for a in (p.name.lower(), *p.aliases)}
 
 
-def resolve(reagent: str = "auto", peaks=None) -> ReagentProfile:
+# --- registry / config-driven reagents ------------------------------------
+# New reagent = register a ReagentProfile (in code, or from a JSON/TOML config so
+# users add reagents WITHOUT forking the package).
+_CONFIG_FIELDS = ("name", "label", "polarity", "adducts", "normaliser",
+                  "reagent_ion_re", "ranges", "detect_adduct", "context", "aliases")
+
+
+def register(profile: "ReagentProfile", *, overwrite: bool = True) -> "ReagentProfile":
+    """Add (or replace) a reagent profile in the registry + alias map."""
+    if not overwrite and profile.name in PROFILES:
+        raise ValueError(f"reagent {profile.name!r} already registered")
+    PROFILES[profile.name] = profile
+    for a in (profile.name.lower(), *profile.aliases):
+        _BY_ALIAS[a] = profile
+    return profile
+
+
+def from_dict(entry: dict) -> "ReagentProfile":
+    """Build a ReagentProfile from a plain dict (config entry)."""
+    kw = {k: entry[k] for k in _CONFIG_FIELDS if k in entry}
+    if "aliases" in kw:
+        kw["aliases"] = tuple(kw["aliases"])
+    return ReagentProfile(**kw)
+
+
+def load_config(path: str) -> list:
+    """Register reagent profiles from a JSON or TOML file (so users add reagents
+    without editing the package). Accepts a top-level list of entries, a
+    `{"reagents": [...]}` wrapper, or a `{name: {fields...}}` mapping. Each entry
+    carries the ReagentProfile fields (name/label/polarity/adducts/normaliser/
+    reagent_ion_re/ranges/detect_adduct, + optional context/aliases)."""
+    import json
+    import os
+
+    p = os.path.expanduser(path)
+    raw = open(p, "rb").read()
+    if p.endswith(".toml"):
+        import tomllib
+        data = tomllib.loads(raw.decode())
+    else:
+        data = json.loads(raw.decode())
+    if isinstance(data, dict):
+        entries = (data["reagents"] if isinstance(data.get("reagents"), list)
+                   else [{"name": k, **v} for k, v in data.items()])
+    else:
+        entries = data
+    return [register(from_dict(e)) for e in entries]
+
+
+def resolve(reagent: str = "auto", peaks=None, *, config: str | None = None) -> ReagentProfile:
     """Return a ReagentProfile. `reagent` may be a name/alias, or 'auto' to detect
-    from a loaded peak table (its server adduct mechanisms, then polarity)."""
+    from a loaded peak table (its server adduct mechanisms, then polarity). `config`
+    (a JSON/TOML path) registers extra/override reagents before resolving."""
+    if config:
+        load_config(config)
     if reagent and reagent.lower() in _BY_ALIAS:
         return _BY_ALIAS[reagent.lower()]
     if reagent != "auto":

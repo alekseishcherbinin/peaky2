@@ -48,13 +48,17 @@ config-expandable; Orange Ur+Br shareable as the offline demo. Data path LIVE-VE
   bytes when it changes). `.github/workflows/test.yml` = matrix 3.11–3.13, install from public PyPI, assert NO
   Mascope creds, run smoke + pytest. requires-python>=3.11 (matches the pandas 3.0 lock). **Suite 833/30 green;
   pytest 30/30.** Phases 0–2 committed (4dd8233); Phase 3 committed.
-- **NEXT = Phase 4 (onboarding + reuse polish):** QUICKSTART.md (clone → creds → `list` → `assign` → `batch`),
-  `--demo` offline mode from a bundled Orange parquet (NB `.gitignore` excludes `*.parquet` → needs a carve-out
-  or Git LFS), an NO3⁻ `ReagentProfile` + config-driven `--reagent-config` (the user will test NO3⁻ before ship),
-  a `ClusterConfig` for cluster.py's tuning constants, polarity-aware `cleanup.py` (drive RECOVERY_ADDUCTS /
-  reagent_element from the profile so non-Br reagents get a working recovery pass). PLUS: LIVE-validate
-  `mascope-assign batch` end-to-end, then DELETE the orange-assign scratch shims. Keep the suite green + report
-  bytes stable. **Create the private GitHub remote when ready.**
+- **Phase 4 IN PROGRESS — onboarding + reuse.** DONE: (4a) NO3⁻ `ReagentProfile` (provisional) + config-driven
+  reagents — `profiles.register()` / `load_config()` (JSON/TOML) + `resolve(config=)` + CLI `--reagent-config`
+  on assign/batch (add a reagent WITHOUT forking); test_profiles.py 14. (4d) QUICKSTART.md (clone→install→creds→
+  list→assign→batch→report + reagent-config example + troubleshooting); README links it, SKILL notes NO3/config.
+  Suite 847/31 green. REMAINING: (4c) `--demo` offline mode from a bundled Orange parquet — the Br demo is ~5.8 MB
+  (per_file 2.1M + ts 3.6M); decide bundle-direct vs Git LFS vs trimmed (.gitignore `*.parquet` needs a carve-out
+  + hatchling `artifacts`). (4b) polarity/profile-aware `cleanup.py` (drive RECOVERY_ADDUCTS / reagent_element
+  from the profile) — DEFERRED to when NO3⁻ is live-tested, because it changes a verified assignment module that
+  can't be re-validated offline (needs a ~40-min Br/Ur re-run to prove no regression). (4e) `ClusterConfig` for
+  cluster.py constants. PLUS: LIVE-validate `mascope-assign batch` end-to-end, then DELETE the orange-assign
+  shims. **Create the private GitHub remote when ready.**
 
 **REPORT CRITICAL-REVIEW FIXES (session 3, 2026-06-20) — committed, reports regenerated.**
 A 6-dimension adversarial review of the Ur/Br PDFs surfaced two genuinely misleading
