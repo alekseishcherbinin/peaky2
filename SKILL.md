@@ -133,8 +133,10 @@ file otherwise falls back to `[M-H]-` = wrong polarity). For positive urea-CIMS,
   emits a per-cluster XLSX (one tab per cluster: formula / channel / m/z / match_score / tier).
   **Shape-cluster (assigned):** cluster ALL bright organic channels on RAW log-correlation (NOT
   reagent-norm — that makes the flat background spuriously 'rise' together), then `cluster.merge_similar`
-  (COMPLETE-linkage centroid merge, `MERGE_R`) folds near-identical-shape families; the non-clustering
-  remainder is the genuinely-flat panel. Per-trace gates can't see coherence, so they hid real bursts.
+  (COMPLETE-linkage centroid merge, `MERGE_R`) folds near-identical-shape families, then
+  `cluster.split_flat_clusters` (via `cluster_flatness` = smoothed max/median of the member-MEAN trace,
+  `FLAT_CLUSTER_RANGE`) DEMOTES clusters that co-vary but whose family mean is flat into the flat panel.
+  The non-clustering remainder + flat clusters + Si = the flat panel; only dynamic families are shown.
 - **`analyte_viz.render_van_krevelen_full`** — every assigned peak by CHO/CHON/CHOS
   backbone (Si/F/halogen folded into the backbone, not split out).
 - **`pdf_report.build(out_dir, tag=, label=, ts_path=, batch_name=, run_id=, generated=)`** — the

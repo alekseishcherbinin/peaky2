@@ -105,6 +105,23 @@ check("merge_similar: merged ids are disjoint from original singleton ids",
       set(nbig).isdisjoint({1, 2, 3}), nbig)
 check("merge_similar: <2 clusters is a no-op", CL.merge_similar(Lgm, labm, [1])[1] == [1])
 
+# --- split_flat_clusters: demote clusters whose family-MEAN doesn't move ------
+T2 = 20
+t2 = np.linspace(0, 1, T2)
+flatfam = {f"P{i}": 1000.0 + 5 * np.cos(np.arange(T2) + i) for i in range(4)}      # ~constant
+risefam = {f"Q{i}": 10 ** (1 + 2 * t2) * (1 + 0.01 * np.sin(np.arange(T2) + i)) for i in range(4)}
+tf = pd.DataFrame({**flatfam, **risefam})
+check("cluster_flatness: a flat family scores ~1 (below the gate)",
+      CL.cluster_flatness(list(flatfam), tf) < CL.FLAT_CLUSTER_RANGE,
+      CL.cluster_flatness(list(flatfam), tf))
+check("cluster_flatness: a rising family clears the gate",
+      CL.cluster_flatness(list(risefam), tf) >= CL.FLAT_CLUSTER_RANGE,
+      CL.cluster_flatness(list(risefam), tf))
+rows_in = [(1, list(flatfam), 0.9, "peak", 0.5), (2, list(risefam), 0.95, "rise", 1.5)]
+dyn, flatd = CL.split_flat_clusters(rows_in, tf)
+check("split_flat_clusters: rising stays dynamic, flat family demoted",
+      [r[0] for r in dyn] == [2] and [r[0] for r in flatd] == [1], (dyn, flatd))
+
 # --- per-cluster workbook (one tab per cluster) ------------------------------
 wb_rows = [(1, ["A", "B", "C"], 0.9, "rise", 0.5),
            ("remaining (singletons)", ["D", "E"], float("nan"), "n/a", 0.0)]

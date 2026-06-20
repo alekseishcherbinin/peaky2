@@ -43,6 +43,17 @@ that clears after 15-30 min of NO traffic (polling EXTENDS it). For a blocked li
   big clusters are the h0.2 decay). Cost: ~18 cluster pages (user wanted all signal dissected). The
   per-trace `trace_varies`/`trace_dynamic_range`/`split_varying`/`FLAT_CV`/`PEAK_RANGE` now serve only
   the UNASSIGNED path. `merge_similar` test added (cluster 29).
+  **FLAT-CLUSTER DEMOTION (user 2026-06-20 — listed ~33 'flat' clusters):** some clusters PASS the
+  correlation cut (members co-vary) but the FAMILY MEAN is flat (correlated background riding the same
+  tiny jitter). General rule = a CLUSTER-LEVEL flatness test: `cluster.cluster_flatness(members, traces)`
+  = smoothed max/median of the member-MEAN raw trace; `split_flat_clusters(rows, traces,
+  range_min=FLAT_CLUSTER_RANGE=1.4)` demotes clusters whose mean doesn't move into the flat panel.
+  Threshold from data: user-flagged flat clusters sat at mean-DR 1.04-1.35, real families ≥1.48 (gap
+  ~1.4); the metric also caught flat clusters the user missed (general, not their exact list). Ur: 60
+  merged → **16 dynamic families** (decay + bursts) + 44 flat clusters (234 ch) demoted; flat panel
+  567→801 (still flat); all 33 user IDs demoted. Driver renders only dynamic rows; CSV/workbook = dynamic
+  only; flat panel = remainder + flat-cluster members + Si. `cluster_flatness`/`split_flat_clusters`
+  tested (cluster 32).
 - **PER-ION CLUSTERING + CHANNEL-AGREEMENT QC (NEW, user 2026-06-20):** assigned analytes now cluster
   PER ION CHANNEL (formula+adduct), NOT the per-neutral SUM, because a neutral's channels often diverge
   in time — `analyte_viz.channel_agreement` showed **Ur 44% / Br 22%** of multi-channel neutrals have

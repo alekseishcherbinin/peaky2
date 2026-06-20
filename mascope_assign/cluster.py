@@ -34,6 +34,9 @@ SMOOTH_W = 3             # smoothing window for the transient-burst detector
 PEAK_RANGE = 1.7         # smoothed max/median at/above which a trace has a coherent
                          # transient burst -> clustered even when its cv < FLAT_CV
                          # (a brief spike barely moves cv; this catches it)
+FLAT_CLUSTER_RANGE = 1.4  # a cluster whose MEMBER-MEAN smoothed max/median is below this
+                          # is a flat family (members co-vary but the family doesn't move)
+                          # -> demoted to the flat-background overview
 DIST_T = 0.40            # 1-r cut: r > 0.6 merges
 MIN_POINTS = 8           # finite trace points needed to correlate
 MIN_MEMBERS = 3          # smallest reported cluster
@@ -99,19 +102,52 @@ def trace_cv(traces: pd.DataFrame, col) -> float:
     return float(tr.std() / m) if m > 0 else 0.0
 
 
-def trace_dynamic_range(traces: pd.DataFrame, col, *, smooth_w=SMOOTH_W) -> float:
-    """Smoothed max / median of a trace — sensitive to a coherent TRANSIENT burst
-    that the global CV misses. Smoothing first rejects single-bin noise spikes (only
-    a multi-bin excursion survives), so a real synchronized burst scores high while
-    jitter stays ~1. 1.0 for a dead-flat or empty trace."""
-    if col not in traces:
-        return 0.0
-    ys = smooth(pd.to_numeric(traces[col], errors="coerce").to_numpy(), smooth_w)
+def _smoothed_range(y, smooth_w=SMOOTH_W) -> float:
+    """Smoothed max / median of a 1-D trace — how much it MOVES. ~1 = flat; a real
+    rise/fall/burst scores higher. Smoothing first rejects single-bin noise spikes."""
+    ys = smooth(np.asarray(y, float), smooth_w)
     pos = ys[np.isfinite(ys) & (ys > 0)]
     if not len(pos):
         return 0.0
     med = np.median(pos)
     return float(np.max(pos) / med) if med > 0 else 0.0
+
+
+def trace_dynamic_range(traces: pd.DataFrame, col, *, smooth_w=SMOOTH_W) -> float:
+    """Smoothed max / median of one trace — sensitive to a coherent TRANSIENT burst
+    the global CV misses (a synchronized spike scores high; jitter stays ~1)."""
+    if col not in traces:
+        return 0.0
+    return _smoothed_range(pd.to_numeric(traces[col], errors="coerce").to_numpy(), smooth_w)
+
+
+def cluster_flatness(members, traces: pd.DataFrame, *, smooth_w=SMOOTH_W) -> float:
+    """Smoothed max/median of a cluster's MEMBER-MEAN raw trace — how much the FAMILY
+    as a whole moves. ~1 means the members co-vary but the family is flat (correlated
+    background: it passed the correlation cut yet has no real dynamics)."""
+    import warnings
+    cols = [m for m in members if m in traces.columns]
+    if not cols:
+        return 0.0
+    M = np.vstack([np.where(traces[m].to_numpy(float) > 0, traces[m].to_numpy(float), np.nan)
+                   for m in cols])
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)   # all-NaN time bins are fine
+        mean = np.nanmean(M, axis=0)
+    return _smoothed_range(mean, smooth_w)
+
+
+def split_flat_clusters(rows, traces: pd.DataFrame, *, range_min=FLAT_CLUSTER_RANGE,
+                        smooth_w=SMOOTH_W):
+    """Partition cluster `rows` (cluster_rows output) into (dynamic, flat). A cluster
+    is FLAT if its member-mean trace has no real excursion (cluster_flatness <
+    range_min) — its members correlate but the family itself doesn't move, so it
+    belongs in the flat-background overview, not shown as a 'co-varying family'."""
+    dyn, flat = [], []
+    for row in rows:
+        (dyn if cluster_flatness(row[1], traces, smooth_w=smooth_w) >= range_min
+         else flat).append(row)
+    return dyn, flat
 
 
 def trace_varies(traces: pd.DataFrame, col, *, cv_min=FLAT_CV, range_min=PEAK_RANGE,
@@ -469,9 +505,9 @@ def render_flat_panel(cols, traces_raw, grid, out, item_label, *,
     PAGE_W, PAGE_H = 8.27, 11.69
     fig = plt.figure(figsize=(PAGE_W, PAGE_H))
     fig.text(0.075, 0.955, f"{title}", fontsize=12, weight="bold", color="#222")
-    fig.text(0.075, 0.935, f"n={len(cols)} — channels that did NOT join any co-varying family "
-             "(no reliable shape) + Si contamination; bunched so they don't bloat the cluster count",
-             fontsize=8.5, color="#666")
+    fig.text(0.075, 0.935, f"n={len(cols)} — channels with no real family dynamics: uncorrelated, "
+             "or in a co-varying cluster whose mean is flat, + Si contamination; bunched so they "
+             "don't bloat the cluster count", fontsize=8.5, color="#666")
     # taller panel when there's no member list to show below it
     ax = (fig.add_axes([0.10, 0.50, 0.86, 0.36]) if listing
           else fig.add_axes([0.10, 0.34, 0.86, 0.52]))
