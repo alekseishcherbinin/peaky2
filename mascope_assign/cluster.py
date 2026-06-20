@@ -491,11 +491,12 @@ def write_cluster_workbook(rows, out_xlsx, *, meta=None, item_label=None,
 
 
 def big_changers(traces: pd.DataFrame, cols, grid, *, fold_min=BIG_CHANGE_FOLD, smooth_w=2):
-    """Channels that change A LOT on their own — smoothed max/median >= fold_min
-    (~>=5-10x raw) — regardless of whether they co-vary with anything. These are
-    individually interesting (e.g. a single peak that spikes 10x during an event)
-    but have no family, so they'd otherwise sit unnoticed in the flat panel.
-    Returns [(col, fold, peak_hour), ...] sorted by fold, largest first."""
+    """Channels that change A LOT on their own — peak / baseline (smoothed max over
+    the 10th-percentile) >= fold_min — regardless of whether they co-vary with
+    anything. Using the low-percentile baseline (not the median) means a monotonic
+    decay/rise counts as much as a spike: any 'huge change then long tail' is caught,
+    not just a peak above a flat median. These have no family so they'd otherwise sit
+    unnoticed in the flat panel. Returns [(col, fold, peak_hour), ...], largest first."""
     out = []
     for c in cols:
         if c not in traces.columns:
@@ -504,8 +505,8 @@ def big_changers(traces: pd.DataFrame, cols, grid, *, fold_min=BIG_CHANGE_FOLD, 
         pos = ys[np.isfinite(ys) & (ys > 0)]
         if len(pos) < MIN_POINTS:
             continue
-        med = np.median(pos)
-        fold = float(np.max(pos) / med) if med > 0 else 0.0
+        base = np.percentile(pos, 10)         # robust low baseline (not the median)
+        fold = float(np.max(pos) / base) if base > 0 else 0.0
         if fold >= fold_min:
             ph = float(grid[int(np.nanargmax(np.where(np.isfinite(ys), ys, -np.inf)))])
             out.append((c, fold, ph))
