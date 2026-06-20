@@ -157,5 +157,21 @@ with tempfile.TemporaryDirectory() as d:
           list(s1.columns))
     check("write_cluster_workbook([]) -> None", CL.write_cluster_workbook([], f"{d}/x.xlsx") is None)
 
+    # reproducibility: two workbooks built from the same data must be byte-identical
+    # (openpyxl otherwise stamps datetime.now() into core.xml + zip member mtimes)
+    import hashlib
+    import time
+    a = CL.write_cluster_workbook(wb_rows, f"{d}/a.xlsx", meta=wb_meta,
+                                  item_label=lambda k: f"ion-{k}",
+                                  member_cols=["neutral_formula", "channel", "match_score", "tier"])
+    time.sleep(1.1)   # wall-clock gap so an un-normalised stamp would differ
+    b = CL.write_cluster_workbook(wb_rows, f"{d}/b.xlsx", meta=wb_meta,
+                                  item_label=lambda k: f"ion-{k}",
+                                  member_cols=["neutral_formula", "channel", "match_score", "tier"])
+    ha = hashlib.sha256(open(a, "rb").read()).hexdigest()
+    hb = hashlib.sha256(open(b, "rb").read()).hexdigest()
+    check("write_cluster_workbook is byte-reproducible (timestamps normalised)", ha == hb,
+          f"{ha[:12]} vs {hb[:12]}")
+
 print(f"\n{PASS} passed, {FAIL} failed")
 sys.exit(1 if FAIL else 0)

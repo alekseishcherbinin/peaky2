@@ -487,7 +487,37 @@ def write_cluster_workbook(rows, out_xlsx, *, meta=None, item_label=None,
                 cols = ["member"] + [c for c in member_cols if c in df.columns]
                 df = df[[c for c in cols if c in df.columns]]
             df.to_excel(xw, sheet_name=_sheet_name(cid, used), index=False)
+    _make_xlsx_deterministic(out_xlsx)
     return out_xlsx
+
+
+# fixed timestamp so two workbooks built from the same data are byte-identical
+# (openpyxl otherwise stamps datetime.now() into core.xml + every zip member mtime).
+_XLSX_EPOCH = (2020, 1, 1, 0, 0, 0)
+_XLSX_ISO = b"2020-01-01T00:00:00Z"
+
+
+def _make_xlsx_deterministic(path) -> None:
+    """Rewrite an .xlsx so its bytes are reproducible: normalise the openpyxl-stamped
+    creation/modification time in docProps/core.xml AND every zip member's embedded
+    mtime to a fixed constant. The sheet data is untouched — identical content,
+    deterministic bytes."""
+    import os
+    import re
+    import zipfile
+    with zipfile.ZipFile(path) as zin:
+        items = [(n, zin.read(n)) for n in sorted(zin.namelist())]
+    tmp = f"{path}.tmp"
+    with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zout:
+        for name, data in items:
+            if name == "docProps/core.xml":
+                data = re.sub(rb"(<dcterms:(?:created|modified)[^>]*>)[^<]*(</dcterms:)",
+                              lambda m: m.group(1) + _XLSX_ISO + m.group(2), data)
+            zi = zipfile.ZipInfo(name, date_time=_XLSX_EPOCH)
+            zi.compress_type = zipfile.ZIP_DEFLATED
+            zi.external_attr = 0o600 << 16
+            zout.writestr(zi, data)
+    os.replace(tmp, path)
 
 
 def big_changers(traces: pd.DataFrame, cols, grid, *, fold_min=BIG_CHANGE_FOLD, smooth_w=2):
