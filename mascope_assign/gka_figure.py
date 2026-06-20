@@ -31,15 +31,21 @@ GREY = "#777777"
 
 # Repeat-unit families. Each is one small-multiple panel: `base` is the unit the
 # panel's Kendrick axis flattens (so that family's ladders run horizontal);
-# `units` are all repeat units folded into the family's series/summary counts.
-# (label, base unit, units folded in, colour)
-FAMILIES: list[tuple[str, str, list[str], str]] = [
-    ("alkyl",       "CH2",     ["CH2"],                            "#1D9E75"),
-    ("oxidation",   "O",       ["O", "CO", "CO2", "H2O", "C2H2O"], "#378ADD"),
-    ("alkoxylate",  "C2H4O",   ["C2H4O", "C3H6O"],                 "#7F77DD"),
-    ("siloxane",    "C2H6OSi", ["C2H6OSi"],                        "#BA7517"),
-    ("fluorinated", "CF2",     ["CF2"],                            "#D4537E"),
+# `units` are the repeat units folded into the family's series/summary counts.
+# `element` marks a CONTAMINANT family defined by an ELEMENT (Si / F), not by a
+# long ladder — every element-bearing peak is highlighted and the panel is shown
+# whenever the contaminant is present (siloxanes/PFAS often don't form a >=4 rung
+# ladder yet are still worth surfacing). element=None -> a homology (ladder) family.
+# (label, base unit, units folded in, colour, element)
+FAMILIES: list[tuple[str, str, list[str], str, str | None]] = [
+    ("alkyl",       "CH2",     ["CH2"],                            "#1D9E75", None),
+    ("oxidation",   "O",       ["O", "CO", "CO2", "H2O", "C2H2O"], "#378ADD", None),
+    ("alkoxylate",  "C2H4O",   ["C2H4O", "C3H6O"],                 "#7F77DD", None),
+    ("siloxane",    "C2H6OSi", ["C2H6OSi"],                        "#BA7517", "Si"),
+    ("fluorinated", "CF2",     ["CF2"],                            "#D4537E", "F"),
 ]
+
+MIN_ELEMENT = 3       # show a contaminant (element) panel at >= this many element-bearing peaks
 
 
 @dataclass
@@ -91,7 +97,7 @@ def detect_series(formula_mass: dict[str, float], *, units=None, min_len: int = 
 
 
 def _family_of(unit: str) -> tuple[str, str]:
-    for label, base, units, col in FAMILIES:
+    for label, base, units, col, element in FAMILIES:
         if unit in units:
             return label, col
     return unit, "#888888"
@@ -101,12 +107,33 @@ def family_summary(series: list[Series]) -> list[dict]:
     """Aggregate detected series into families: how many series and how many
     distinct member peaks each repeat-unit family explains."""
     rows = []
-    for label, base, units, col in FAMILIES:
+    for label, base, units, col, element in FAMILIES:
         ss = [s for s in series if s.unit in units]
         members = {m for s in ss for m in s.members}
         rows.append({"family": label, "color": col, "n_series": len(ss),
                      "n_members": len(members), "longest": max((s.length for s in ss), default=0)})
     return rows
+
+
+def element_members(formula_mass: dict[str, float], element: str) -> dict[str, float]:
+    """{formula -> mass} for every neutral that CONTAINS `element` (Si/F...)."""
+    return {f: m for f, m in formula_mass.items()
+            if C.parse_formula(f).get(element, 0) > 0}
+
+
+def present_families(formula_mass: dict[str, float], *, min_len: int = 4,
+                     min_element: int = MIN_ELEMENT) -> list[tuple]:
+    """The families worth a panel: homology families with a >= min_len ladder, plus
+    contaminant (element) families with >= min_element element-bearing peaks — so a
+    siloxane/PFAS family shows up even when it never forms a 4-rung ladder."""
+    out = []
+    for fam in FAMILIES:
+        label, base, units, col, element = fam
+        keep = (len(element_members(formula_mass, element)) >= min_element if element
+                else bool(detect_series(formula_mass, units=[base], min_len=min_len)))
+        if keep:
+            out.append(fam)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -125,24 +152,45 @@ def kmd(mass, base: str = "CH2") -> np.ndarray:
 # figure
 # ---------------------------------------------------------------------------
 def _panel(ax, mass: np.ndarray, fmass: dict, base: str, color: str, label: str,
-           *, min_len: int, highlight_min_len: int, top_chains: int) -> tuple[int, int]:
-    """Draw one family small-multiple: grey KMD cloud at `base` + the longest
-    ladders OF THE PANEL'S OWN BASE UNIT connected on top — so every highlighted
-    ladder runs horizontal (the base unit flattens by construction; only that
-    unit's series can, so we never draw a tilted line). Returns (#series, #peaks)
-    of the base unit at `min_len`."""
+           element: str | None = None, *, min_len: int, highlight_min_len: int,
+           top_chains: int) -> tuple[int, int]:
+    """Draw one family small-multiple over a grey KMD cloud at `base`.
+
+    Homology family (element=None): connect the longest ladders OF THE BASE UNIT —
+    every highlighted ladder runs horizontal (only the base unit flattens, so we
+    never draw a tilted line). Returns (#ladders, #peaks).
+    Contaminant family (element set): highlight EVERY element-bearing peak and
+    connect whatever short ladders exist — the family shows even without a >=4 rung
+    ladder. Returns (#ladders, #element-bearing peaks)."""
     y = kmd(mass, base)
     ax.scatter(mass, y, s=5, c="#CBC9C0", alpha=0.45, linewidths=0, zorder=1)
+    ax.set_title(f"{label} · base {base}", fontsize=9.5, loc="left", color=color)
+
+    if element:
+        em = element_members(fmass, element)
+        if em:
+            ex = np.array(list(em.values()))
+            ax.scatter(ex, kmd(ex, base), s=20, c=color, alpha=0.9,
+                       linewidths=0.4, edgecolors="white", zorder=3)
+        ladders = G.find_homolog_series(em, base, min_len=2)     # connect even pairs
+        for chain in ladders[:top_chains]:
+            xs = np.array([em[m] for m in chain])
+            ax.plot(xs, kmd(xs, base), color=color, lw=1.0, alpha=0.85, zorder=2)
+        longest = max((len(c) for c in ladders), default=0)
+        note = f"{len(em)} {element}-bearing · {len(ladders)} ladder(s)"
+        if longest:
+            note += f" · longest {longest}"
+        ax.text(0.015, 0.965, note, transform=ax.transAxes, fontsize=7, va="top", color="#444")
+        ax.tick_params(labelsize=7.5); ax.grid(alpha=0.22)
+        return len(ladders), len(em)
 
     for s in detect_series(fmass, units=[base], min_len=highlight_min_len)[:top_chains]:
         xs = np.array(s.masses)
         ax.plot(xs, kmd(xs, base), color=color, lw=1.0, alpha=0.9, zorder=2,
                 marker="o", ms=3.0, mfc=color, mec="white", mew=0.35)
-
     alls = detect_series(fmass, units=[base], min_len=min_len)
     npk = len({m for s in alls for m in s.members})
     longest = max((s.length for s in alls), default=0)
-    ax.set_title(f"{label} · base {base}", fontsize=9.5, loc="left", color=color)
     if alls:
         ax.text(0.015, 0.965, f"{len(alls)} series · {npk} peaks · longest {longest}",
                 transform=ax.transAxes, fontsize=7, va="top", color="#444")
@@ -171,9 +219,10 @@ def render_gka(ledger: pd.DataFrame, path: str, *, min_len: int = 4,
     fmass = _neutral_masses(ledger)
     mass = np.array(list(fmass.values()))
 
-    # keep only families whose base unit actually forms a series (drop empties)
-    panels = [(label, base, col) for (label, base, units, col) in FAMILIES
-              if detect_series(fmass, units=[base], min_len=min_len)]
+    # homology families need a >=min_len ladder; contaminant (element) families
+    # show whenever the element is present (>= MIN_ELEMENT peaks) — see issue:
+    # siloxanes were assigned but never formed a 4-rung ladder so the panel dropped.
+    panels = present_families(fmass, min_len=min_len)
 
     ncols = 2
     ncells = len(panels) + 1                              # + family-rollup cell
@@ -185,9 +234,9 @@ def render_gka(ledger: pd.DataFrame, path: str, *, min_len: int = 4,
     cells = [gs[i // ncols, i % ncols] for i in range(ncells)]
 
     rollup = []
-    for cell, (label, base, col) in zip(cells, panels):
+    for cell, (label, base, units, col, element) in zip(cells, panels):
         ax = fig.add_subplot(cell)
-        nser, npk = _panel(ax, mass, fmass, base, col, label,
+        nser, npk = _panel(ax, mass, fmass, base, col, label, element,
                            min_len=min_len, highlight_min_len=highlight_min_len,
                            top_chains=top_chains)
         ax.set_xlabel("neutral mass (Da)", fontsize=8)
@@ -203,12 +252,12 @@ def render_gka(ledger: pd.DataFrame, path: str, *, min_len: int = 4,
     for yi, r in zip(yy, rollup):
         ax2.text(r[3] + xmax * 0.02, yi, f"{r[2]}×", va="center", fontsize=7, color="#555")
     ax2.set_xlim(0, xmax * 1.28)
-    ax2.set_xlabel("peaks in a homologous series", fontsize=8)
-    ax2.set_title("Family rollup (peaks · #series)", fontsize=9.5, loc="left")
+    ax2.set_xlabel("highlighted peaks (ladder members / element-bearing)", fontsize=8)
+    ax2.set_title("Family rollup (peaks · #ladders)", fontsize=9.5, loc="left")
     ax2.tick_params(labelsize=7.5)
 
-    sub = ("Generalized Kendrick Analysis: each panel rotates the Kendrick base so that "
-           "family's series flatten to horizontal ladders")
+    sub = ("Each panel flattens its family's homologous series into horizontal ladders; "
+           "Si/F contaminants shown by element")
     fig.text(0.085, 1 - 0.40 / H, title or "GKA homologous-series findings",
              fontsize=12.5, weight="bold", ha="left", color=INK)
     fig.text(0.085, 1 - 0.62 / H, sub, fontsize=7.6, ha="left", color=GREY)

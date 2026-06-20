@@ -147,8 +147,11 @@ file otherwise falls back to `[M-H]-` = wrong polarity). For positive urea-CIMS,
   plots, one per repeat-unit FAMILY (alkyl CH2 / oxidation O,CO,CO2,H2O / alkoxylate
   C2H4O,C3H6O / siloxane / fluorinated CF2), each rotated to its own base so that family's
   homologous series flatten into horizontal ladders, over a grey cloud of every assigned
-  neutral. Pure data fns: `detect_series` / `family_summary` / `kmd`. Needs only
-  `neutral_formula` (works on the merged ledger or a single-file ledger).
+  neutral. Organic families are LADDER-based (need a ≥min_len chain); CONTAMINANT families
+  (siloxane→Si, fluorinated→F) are ELEMENT-based — `present_families` shows them whenever
+  ≥`MIN_ELEMENT` element-bearing peaks exist (siloxanes/PFAS rarely form a 4-rung ladder yet
+  must still surface). Pure fns: `detect_series` / `element_members` / `present_families` /
+  `family_summary` / `kmd`. Needs only `neutral_formula` (merged or single-file ledger).
 
 Reference drivers (live, scratch — fold into a package CLI when sharing) live in
 `~/mascope-output/orange-assign/`: `run_orange.py` (assign), `run_clusters.py`,
@@ -233,7 +236,7 @@ already open. `run_assignment.py` emits one per run.
 | **`assign_batch.py`** | `run(batch\|peaks, ts_peaks=, amine_r_min=)` — assign the reps, keep per-file ledgers, offset-aware merge (`align`) + jitter table; applies the positive amine gate at merge level |
 | **`cluster.py`** | correlation clustering (log-corr, COMPLETE linkage r>0.6, signed distance) → `render_a4` A4-portrait paginated panels + remaining-peaks overview. **Flatness gate** `split_varying`/`render_flat_panel` (cv<`FLAT_CV` bunched, not clustered) |
 | **`pdf_report.py`** | STANDARD iterable PDF report — `build()` over `SECTIONS=[cover, coverage, composition, gka, families, clusters, methods]`, ctx loaded once |
-| **`gka_figure.py`** | STATIC GKA findings page: per-family small-multiple Kendrick mass-defect plots (`render_gka`), each rotated to flatten its homologous series into horizontal ladders. Pure `detect_series`/`family_summary`/`kmd`. Print counterpart of `scripts/gka_widget.py` |
+| **`gka_figure.py`** | STATIC GKA findings page: per-family small-multiple Kendrick mass-defect plots (`render_gka`), each rotated to flatten its homologous series into horizontal ladders. Organic families ladder-based; siloxane/fluorinated ELEMENT-based (`present_families`/`element_members` — show on Si/F presence, not a 4-rung ladder). Print counterpart of `scripts/gka_widget.py` |
 | `profiles.py` | `ReagentProfile` (Br/Ur: polarity/adducts/normaliser/context) + `resolve('auto')` |
 | `timeseries.py` | **time-resolved disposition** (optional, `--ts-batch`): reagent-normalise a batch's per-sample peaks, cv_norm + family co-variation -> classify each M0 inlet-flat-background vs ambient analyte, demote flat di-bromide/CO3 background |
 | `tiers.py` | Identified/Candidate tiering (margin, density, lattice/BrCl, **mass-error gate, CO₃-channel gate, degeneracy-aware**) |

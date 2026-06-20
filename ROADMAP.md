@@ -74,7 +74,13 @@ that clears after 15-30 min of NO traffic (polling EXTENDS it). For a blocked li
   a TILTED line had meant a folded-in non-base unit, e.g. C3H6O under the C2H4O base); EMPTY families
   (siloxane/CF2 on orange) are DROPPED via a dynamic ceil((n+1)/2)×2 grid; the rollup bar is now
   base-unit-consistent with the panels (oxidation = 72 O-series, not the 251 O+CO+CO2+H2O family count).
-- `cleanup.prefer_amine_over_ammonium(ledger, ts_peaks=, r_min=0.7)` — positive urea-CIMS: re-read
+  **v6 (user 2026-06-20 — "siloxanes weren't in GKA"):** CONTAMINANT families (siloxane→Si, fluorinated→F)
+  now have an `element` field and are ELEMENT-based, not ladder-based — the 16 Ur siloxanes were assigned
+  but never formed a ≥4-rung C2H6OSi ladder (longest run = 3 siloxanols / D3-D4 pair), so the empty panel
+  was dropped. Now `present_families` keeps a contaminant panel whenever ≥`MIN_ELEMENT`(3) element-bearing
+  peaks exist; `_panel` highlights EVERY Si/F-bearing peak + connects whatever short ladders exist
+  (min_len 2). `element_members`/`present_families` exported + tested. Ur now shows siloxane (16, 3 ladders);
+  Br shows siloxane + fluorinated (12 F). Organic families unchanged (still need a ≥min_len ladder).
   [M+NH4]+ as [M+H]+ of the +NH3 amine (SAME ion) UNLESS the NH4 trace co-varies (r>=0.7) with the
   [M+H]+/urea parent OR the amine is valence-impossible (forced). Wired in assign_batch (merged level).
 - `residual.py` pass4.A FIX: F enabled only for carbon-CLAMPED pairs (F×wide-C grid was a CPU
@@ -99,7 +105,7 @@ deferred_rerun, all in `~/mascope-output/orange-assign/`.
 4. Binning max-width split guard in `timeseries.build_matrix` (single-linkage chains on dense/drifting data).
 
 **Tests: 24 files green** (sampling 19, assign_batch 12, cluster 25, pdf_report 14, pipeline 8,
-cleanup 29, analyte_viz 15, io_mascope 21, gka_figure 13, …). Run `python3 tests/test_*.py`. WAF:
+cleanup 29, analyte_viz 15, io_mascope 21, gka_figure 18, …). Run `python3 tests/test_*.py`. WAF:
 don't run scoring CONCURRENTLY.
 
 ---
