@@ -52,13 +52,14 @@ def _skill_version() -> str:
 
 
 def load_context(out_dir: str, *, tag: str, label: str, ts_path: str | None = None,
-                 generated: str = "", batch_name: str | None = None) -> dict:
+                 generated: str = "", batch_name: str | None = None,
+                 run_id: str | None = None) -> dict:
     from . import analyte_viz as V
     from . import chemistry as C
     out_dir = os.path.expanduser(out_dir)
     ctx: dict = {"out_dir": out_dir, "tag": tag, "label": label, "fig": {},
                  "generated": generated, "version": _skill_version(),
-                 "batch_name": batch_name}
+                 "batch_name": batch_name, "run_id": run_id}
 
     merged = pd.read_csv(f"{out_dir}/merged_ledger.csv")
     ctx["merged"] = merged
@@ -279,6 +280,8 @@ def cover(ctx, pdf):
         meta = f"{meta}  ·  generated {ctx['generated']}" if meta else f"generated {ctx['generated']}"
     if meta:
         fig.text(0.08, 0.852, meta, fontsize=8.5, color=GREY)
+    if ctx.get("run_id"):
+        fig.text(0.08, 0.834, f"Report ID:  {ctx['run_id']}", fontsize=8.5, color=GREY)
 
     tiers = ctx["tiers"]; idn = tiers.get("Identified", 0); cn = tiers.get("Candidate", 0)
     ts = ctx.get("ts"); sig = (_pct(ts["expl_signal"], ts["tot_signal"]) if ts else None)
@@ -521,14 +524,15 @@ SECTIONS = [cover, coverage, composition, gka, families, clusters, methods]
 
 def build(out_dir: str, *, tag: str, label: str, ts_path: str | None = None,
           out_pdf: str | None = None, generated: str = "", batch_name: str | None = None,
-          sections=SECTIONS) -> str:
+          run_id: str | None = None, sections=SECTIONS) -> str:
     """Build the PDF report for one batch run. `out_dir` holds the run artifacts.
-    `batch_name` titles the report (else taken from the TS, else the reagent label)."""
+    `batch_name` titles the report (else taken from the TS, else the reagent label).
+    `run_id` (the timestamped run folder name) is stamped on the cover as the Report ID."""
     import matplotlib
     matplotlib.use("Agg")
     from matplotlib.backends.backend_pdf import PdfPages
     ctx = load_context(out_dir, tag=tag, label=label, ts_path=ts_path,
-                       generated=generated, batch_name=batch_name)
+                       generated=generated, batch_name=batch_name, run_id=run_id)
     out_pdf = out_pdf or os.path.join(os.path.expanduser(out_dir), f"report_{tag}.pdf")
     with PdfPages(out_pdf) as pdf:
         for section in sections:

@@ -42,6 +42,15 @@ that clears after 15-30 min of NO traffic (polling EXTENDS it). For a blocked li
   (match-score), ion-count DROPPED. `cluster.write_cluster_workbook` → per-cluster XLSX (summary sheet +
   ONE TAB PER CLUSTER: neutral_formula / channel / m/z / match_score / tier / median_cps / cv).
   `channel_agreement_<tag>.csv` QC output. The families report page notes members=ion-channels.
+- **RUN VERSIONING (NEW, user 2026-06-20):** every set of outputs goes in its OWN timestamped folder
+  so a re-run never overwrites a prior one. `pipeline.slugify/run_stamp/run_id/make_run_dir` →
+  `~/mascope-output/peaky/<batch-slug>_<YYYY-MM-DD_HHMMSS>/` (folder name == run id; pass ONE
+  `datetime.now()` per run so folder/id/cover all agree). `pdf_report.build(run_id=)` stamps the cover
+  (title page) with the Report ID and a date+TIME `generated` line. Orchestrator `run_peaky.py <tag>`
+  (scratch) picks the timestamp once, copies the assignment inputs from the canonical `orange-assign/
+  <tag>/` into the run folder, then runs clusters+VK+report into it via `PEAKY_OUT/PEAKY_RUN_ID/
+  PEAKY_GENERATED` env (run_clusters/run_vankrevelen/run_report honour PEAKY_OUT; default = canonical
+  dir). Assignment (live, WAF-gated) still lands in the canonical dir; downstream generation versions.
 - `analyte_viz.py` — Van Krevelen (organic + `render_van_krevelen_full` = every assigned peak by
   CHO/CHON/CHOS backbone, Si/F/halogen folded in) + `attach_dynamics(bin_minutes=)` (short-batch).
 - `pdf_report.py` — STANDARD ITERABLE report: `SECTIONS=[cover, coverage, composition, gka,
@@ -89,9 +98,9 @@ deferred_rerun, all in `~/mascope-output/orange-assign/`.
    → create the GitHub remote + push (none yet; .env is outside the repo, .gitignore covers parquet/log/npy).
 4. Binning max-width split guard in `timeseries.build_matrix` (single-linkage chains on dense/drifting data).
 
-**Tests: 23 files green** (sampling 19, assign_batch 12, cluster 25, pdf_report 10, cleanup 29,
-analyte_viz 15, io_mascope 21, gka_figure 13, …). Run `python3 tests/test_*.py`. WAF: don't run
-scoring CONCURRENTLY.
+**Tests: 24 files green** (sampling 19, assign_batch 12, cluster 25, pdf_report 14, pipeline 8,
+cleanup 29, analyte_viz 15, io_mascope 21, gka_figure 13, …). Run `python3 tests/test_*.py`. WAF:
+don't run scoring CONCURRENTLY.
 
 ---
 

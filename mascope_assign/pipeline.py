@@ -12,6 +12,9 @@ are folded in as their scratch logic is consolidated into the package.
 from __future__ import annotations
 
 import os
+import re
+from datetime import datetime
+
 import pandas as pd
 
 from . import io_mascope as IO
@@ -22,6 +25,36 @@ from . import timeseries as TS
 __version__ = "0.2.0"  # + representative-sample selection (5 time-grid + max-TIC)
 
 STAGES = ("matrix", "assign", "cluster", "validate")
+
+
+# ---------------------------------------------------------------------------
+# run versioning: every set of outputs goes in its OWN timestamped folder so a
+# re-run never overwrites a previous one. The folder name = the run id = the
+# batch slug + date + time, and that same id is stamped on the report cover.
+# Pass `when` explicitly (one datetime.now() per run) so the folder name, the run
+# id and the report's "generated" line all agree.
+# ---------------------------------------------------------------------------
+def slugify(name: str) -> str:
+    """Filesystem-safe batch slug: 'Orange peeling (Ur+ CIMS)' -> 'Orange-peeling-Ur-CIMS'."""
+    return re.sub(r"[^0-9A-Za-z]+", "-", str(name)).strip("-") or "run"
+
+
+def run_stamp(when: datetime | None = None) -> tuple[str, str]:
+    """(folder stamp 'YYYY-MM-DD_HHMMSS', human 'YYYY-MM-DD HH:MM') for `when` (now if None)."""
+    when = when or datetime.now()
+    return when.strftime("%Y-%m-%d_%H%M%S"), when.strftime("%Y-%m-%d %H:%M")
+
+
+def run_id(batch_name: str, when: datetime | None = None) -> str:
+    """Versioned run id = batch slug + timestamp; also the output folder's name."""
+    return f"{slugify(batch_name)}_{run_stamp(when)[0]}"
+
+
+def make_run_dir(base: str, batch_name: str, when: datetime | None = None) -> str:
+    """Create and return a fresh per-run output folder `base/<run_id>`."""
+    d = os.path.join(os.path.expanduser(base), run_id(batch_name, when))
+    os.makedirs(d, exist_ok=True)
+    return d
 
 
 def load(*, batch: str | None = None, dataset: str | None = None,

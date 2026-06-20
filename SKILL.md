@@ -133,11 +133,15 @@ file otherwise falls back to `[M-H]-` = wrong polarity). For positive urea-CIMS,
   emits a per-cluster XLSX (one tab per cluster: formula / channel / m/z / match_score / tier).
 - **`analyte_viz.render_van_krevelen_full`** — every assigned peak by CHO/CHON/CHOS
   backbone (Si/F/halogen folded into the backbone, not split out).
-- **`pdf_report.build(out_dir, tag=, label=, ts_path=, batch_name=)`** — the STANDARD
-  iterable PDF report. Structure = `SECTIONS = [cover, coverage, composition, gka, families,
+- **`pdf_report.build(out_dir, tag=, label=, ts_path=, batch_name=, run_id=, generated=)`** — the
+  STANDARD iterable PDF report. Structure = `SECTIONS = [cover, coverage, composition, gka, families,
   clusters, methods]`, each a `section(ctx, pdf)` fn over a context loaded once by
   `load_context`. To change the report, edit/reorder a section — nothing else couples.
-  The `gka` section renders `gka_figure.render_gka` on demand from the merged ledger.
+  The `gka` section renders `gka_figure.render_gka` on demand from the merged ledger. The cover
+  (title page) stamps `run_id` (the Report ID) and a date+TIME `generated` line.
+- **Run versioning** — `pipeline.make_run_dir(base, batch_name, when)` / `run_id` / `run_stamp` /
+  `slugify`: every set of outputs goes in its own timestamped folder `<batch-slug>_<date>_<time>/`
+  (folder name == Report ID). Pass ONE `datetime.now()` per run so folder, id and cover agree.
 - **`gka_figure.render_gka(ledger, png, …)`** — STATIC GKA findings page (print
   counterpart of the rotating-GKA widget): a small-multiple grid of Kendrick mass-defect
   plots, one per repeat-unit FAMILY (alkyl CH2 / oxidation O,CO,CO2,H2O / alkoxylate

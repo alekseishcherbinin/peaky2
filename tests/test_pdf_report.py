@@ -62,5 +62,20 @@ with tempfile.TemporaryDirectory() as d:
                    sections=[R.cover, boom, R.methods])
     check("build: resilient to a failing section", os.path.exists(out2) and os.path.getsize(out2) > 3000)
 
+    # run versioning: run_id + a date+time 'generated' on the cover (title page)
+    RID = "Orange-peeling-Ur-CIMS_2026-06-20_143512"
+    ctx_r = R.load_context(d, tag="Ur", label="Ur⁺ CIMS", run_id=RID)
+    check("load_context carries run_id for the cover", ctx_r.get("run_id") == RID)
+    out3 = R.build(d, tag="Ur", label="Ur⁺ CIMS", generated="2026-06-20 14:35",
+                   run_id=RID, out_pdf=f"{d}/r3.pdf")
+    check("build with run_id + timestamped generated -> PDF", os.path.exists(out3))
+    try:
+        import fitz  # PyMuPDF — verify the cover text if available
+        cover = fitz.open(out3)[0].get_text()
+        check("cover shows the Report ID (with time)", RID in cover, cover[:400])
+        check("cover 'generated' carries date AND time", "2026-06-20 14:35" in cover, cover[:400])
+    except ImportError:
+        pass
+
 print(f"\n{PASS} passed, {FAIL} failed")
 sys.exit(1 if FAIL else 0)
