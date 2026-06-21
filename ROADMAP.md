@@ -58,7 +58,9 @@ config-expandable; Orange Ur+Br shareable as the offline demo. Data path LIVE-VE
   from the profile) — DEFERRED to when NO3⁻ is live-tested, because it changes a verified assignment module that
   can't be re-validated offline (needs a ~40-min Br/Ur re-run to prove no regression). (4e) `ClusterConfig` for
   cluster.py constants. PLUS: LIVE-validate `mascope-assign batch` end-to-end, then DELETE the orange-assign
-  shims. **Create the private GitHub remote when ready.**
+  shims. **Private GitHub remote DONE — `alekseishcherbinin/mascope-assign` (private); `origin` tracks
+  main; CI green on 3.11–3.13.** Creds: `.env` can now live in the repo root (project-local, git-ignored,
+  found regardless of cwd via `io_mascope._find_env`) as well as `~/.mascope/.env`.
 
 **REPORT CRITICAL-REVIEW FIXES (session 3, 2026-06-20) — committed, reports regenerated.**
 A 6-dimension adversarial review of the Ur/Br PDFs surfaced two genuinely misleading

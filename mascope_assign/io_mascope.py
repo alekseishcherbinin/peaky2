@@ -25,10 +25,16 @@ import pandas as pd
 
 __version__ = "0.2.0"  # + estimate_offset (rough pre-calibration from sample matches)
 
-# Credential .env search order (canonical first). The long-running MCP server
-# holds a STALE in-memory token and 401s; the SDK reads the live file, so always
-# load from disk. ~/.mascope/.env is the canonical home (decoupled from mascope-mcp).
-ENV_SEARCH = ["~/.mascope/.env", "~/mascope-mcp/.env", "~/.claude/skills/mascope-sdk/.env"]
+# Credential .env search order. The long-running MCP server holds a STALE in-memory
+# token and 401s; the SDK reads the live file, so always load from disk.
+# Precedence: --env / $MASCOPE_ENV > a PROJECT-LOCAL .env (the repo root, next to
+# pyproject.toml/the package — clone-and-go — or the current dir) > the home
+# locations (~/.mascope/.env is the canonical shared one).
+_PKG_DIR = os.path.dirname(os.path.abspath(__file__))           # .../mascope_assign
+_REPO_ENV = os.path.join(os.path.dirname(_PKG_DIR), ".env")     # repo-root/.env (editable install)
+CANONICAL_ENV = "~/.mascope/.env"
+ENV_SEARCH = [_REPO_ENV, ".env", CANONICAL_ENV, "~/mascope-mcp/.env",
+              "~/.claude/skills/mascope-sdk/.env"]
 CACHE_ROOT = Path(os.path.expanduser("~/.mascope-assign-cache"))
 
 
@@ -40,7 +46,15 @@ def _find_env(explicit: str | None = None) -> str:
         p = os.path.expanduser(cand)
         if os.path.exists(p):
             return p
-    return os.path.expanduser(ENV_SEARCH[0])
+    # last resort: walk up from the cwd for a project-local .env (clone-and-go)
+    try:
+        from dotenv import find_dotenv
+        found = find_dotenv(usecwd=True)
+        if found:
+            return found
+    except Exception:
+        pass
+    return os.path.expanduser(CANONICAL_ENV)
 MATCH_BATCH = 200   # match_compounds times out above ~500
 
 # Default server-side match parameters. mz_tolerance is INTEGER ppm.
@@ -63,8 +77,9 @@ _ISO_TOKEN = re.compile(r"\[(\d+[A-Z][a-z]?)\](\d*)")
 # ---------------------------------------------------------------------------
 def connect(env_path: str | None = None):
     """Build a MascopeClient from the .env (MASCOPE_URL, MASCOPE_ACCESS_TOKEN).
-    Searches ENV_SEARCH (canonical ~/.mascope/.env first), or $MASCOPE_ENV, unless
-    env_path is given. Process env vars of the same name also work directly."""
+    Searches a project-local .env (repo root or cwd) then the home locations, or
+    $MASCOPE_ENV, unless env_path is given. Process env vars of the same name also
+    work directly."""
     from dotenv import load_dotenv
     path = _find_env(env_path)
     load_dotenv(path)
@@ -73,8 +88,8 @@ def connect(env_path: str | None = None):
     if not url or not tok:
         raise RuntimeError(
             f"MASCOPE_URL / MASCOPE_ACCESS_TOKEN not found (looked in {path}). "
-            "Copy .env.example to ~/.mascope/.env and fill it in, set $MASCOPE_ENV "
-            "to your .env path, or export the two variables directly.")
+            "Copy .env.example to .env in the repo root (or ~/.mascope/.env) and fill "
+            "it in, set $MASCOPE_ENV to your .env path, or export the two variables.")
     from mascope_sdk import MascopeClient
     return MascopeClient(url=url, access_token=tok)
 

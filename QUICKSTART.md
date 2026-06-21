@@ -21,12 +21,19 @@ python3 tests/test_smoke.py          # "50 passed" => imports + deps OK
 
 ## 2. Credentials
 
+Copy the template to a **project-local `.env`** in the repo root (git-ignored,
+found automatically) and fill in your values:
+
+```bash
+cp .env.example .env        # then edit .env -> MASCOPE_URL=...  MASCOPE_ACCESS_TOKEN=...
+```
+Prefer a shared home location? Use `~/.mascope/.env` instead:
 ```bash
 mkdir -p ~/.mascope && cp .env.example ~/.mascope/.env
 ```
-Edit `~/.mascope/.env` and fill in your `MASCOPE_URL` and `MASCOPE_ACCESS_TOKEN`
-(from the Mascope web app). Alternatively `export` those two variables, or pass
-`--env /path/to/.env` to any command.
+You can also `export MASCOPE_URL=… MASCOPE_ACCESS_TOKEN=…`, or pass `--env
+/path/to/.env` to any command. Search order: `--env` / `$MASCOPE_ENV` > repo-root
+`.env` (or cwd) > `~/.mascope/.env`. Token: from the Mascope web app.
 
 ## 3. Find your data
 

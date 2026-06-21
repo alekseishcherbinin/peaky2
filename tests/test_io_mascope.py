@@ -129,6 +129,29 @@ check("estimate_offset None when too few matches",
 check("estimate_offset None on a table with no match columns",
       IO.estimate_offset(pd.DataFrame({"mz": [1.0, 2.0]})) is None)
 
+# ---------- _find_env precedence: explicit > $MASCOPE_ENV > project-local .env ----------
+import tempfile  # noqa: E402
+
+_cwd0, _menv0, _search0 = os.getcwd(), os.environ.pop("MASCOPE_ENV", None), IO.ENV_SEARCH
+try:
+    with tempfile.TemporaryDirectory() as _d:
+        proj = os.path.join(_d, ".env"); open(proj, "w").write("MASCOPE_URL=x\n")
+        other = os.path.join(_d, "other.env"); open(other, "w").write("MASCOPE_URL=y\n")
+        os.chdir(_d)
+        IO.ENV_SEARCH = [".env"]                       # isolate from home/repo paths
+        check("_find_env: explicit path wins", IO._find_env(other) == other)
+        os.environ["MASCOPE_ENV"] = other
+        check("_find_env: $MASCOPE_ENV honored (no explicit)", IO._find_env() == other)
+        os.environ.pop("MASCOPE_ENV", None)
+        check("_find_env: finds a project-local ./.env", os.path.samefile(IO._find_env(), proj))
+finally:
+    os.chdir(_cwd0); IO.ENV_SEARCH = _search0
+    if _menv0 is not None:
+        os.environ["MASCOPE_ENV"] = _menv0
+check("_REPO_ENV points at the repo-root .env (next to the package)",
+      IO._REPO_ENV == os.path.join(
+          os.path.dirname(os.path.dirname(os.path.abspath(IO.__file__))), ".env"))
+
 # ---------- live smoke (opt-in) ----------
 if os.environ.get("MASCOPE_LIVE") == "1":
     print("\n-- live smoke --")
