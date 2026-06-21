@@ -943,6 +943,40 @@ check("_known_species(negative) keeps the atmospheric list",
 check("_known_species(negative) carries the PFCA (perfluoroacid) series incl TFA",
       "perfluoroacid" in P._known_species("negative")
       and "C2HF3O2" in P._known_species("negative")["perfluoroacid"])
+check("_known_species(negative) carries chlorinated_paraffin incl C11H18Cl6",
+      "chlorinated_paraffin" in P._known_species("negative")
+      and "C11H18Cl6" in P._known_species("negative")["chlorinated_paraffin"])
+
+# pass0: commit a ³⁷Cl-confirmed chlorinated paraffin, refuse an unconfirmed one
+_cpmz = 358.947
+def _cp_rows(with_kids):
+    rows = [iso_row(compound_formula="C11H18Cl6", compound_score=0.5, ion_formula="C11H17Cl6-",
+                    isotope_formula="C11H17Cl6-", iso_label="M0", is_base=True, theo_mz=_cpmz,
+                    sample_peak_id="cp0", sample_peak_mz=_cpmz, sample_peak_intensity=5000.0,
+                    ppm_error=0.4, ion_score=0.7)]
+    if with_kids:
+        rows += [iso_row(compound_formula="C11H18Cl6", ion_formula="C11H17Cl6-",
+                         isotope_formula="[37Cl]C11H17Cl5-", iso_label="37Cl", is_base=False,
+                         theo_mz=_cpmz + 1.997, sample_peak_id="cp1", sample_peak_mz=_cpmz + 1.997,
+                         sample_peak_intensity=4000.0, ppm_error=0.4, iso_score=0.95),
+                 iso_row(compound_formula="C11H18Cl6", ion_formula="C11H17Cl6-",
+                         isotope_formula="[37Cl2]C11H17Cl4-", iso_label="37Cl2", is_base=False,
+                         theo_mz=_cpmz + 3.994, sample_peak_id="cp2", sample_peak_mz=_cpmz + 3.994,
+                         sample_peak_intensity=2500.0, ppm_error=0.4, iso_score=0.9)]
+    return pd.DataFrame(rows)
+def _fake_cp(c, s, forms, *, mechanism_ids=None, **kw):
+    return _cp_rows(True) if "C11H18Cl6" in forms else pd.DataFrame([])
+def _fake_cp0(c, s, forms, *, mechanism_ids=None, **kw):
+    return _cp_rows(False) if "C11H18Cl6" in forms else pd.DataFrame([])
+_ledcp = mk_ledger([("cp0", _cpmz, 5000.0), ("cp1", _cpmz + 1.997, 4000.0), ("cp2", _cpmz + 3.994, 2500.0)])
+P.run_pass0_known(None, "SID", _ledcp, PROF5, ACFG, ADD5, score_fn=_fake_cp, log=lambda *a: None)
+check("pass0 commits a ³⁷Cl-confirmed chlorinated paraffin",
+      _ledcp.loc[_ledcp.peak_id == "cp0", "neutral_formula"].iloc[0] == "C11H18Cl6"
+      and _ledcp.loc[_ledcp.peak_id == "cp0", "method"].iloc[0] == "known:chlorinated_paraffin")
+_ledcp0 = mk_ledger([("cp0", _cpmz, 5000.0)])
+P.run_pass0_known(None, "SID", _ledcp0, PROF5, ACFG, ADD5, score_fn=_fake_cp0, log=lambda *a: None)
+check("pass0 refuses a ³⁷Cl-unconfirmed chlorinated paraffin (n_kids<2)",
+      L.role_of(_ledcp0, "cp0") == L.ROLE_UNEXPLAINED)
 
 # TEP (C6H15O4P) seen in BOTH [M+H]+ and [M+(urea)H]+ -> cross-channel corroborated
 _mzH = CH.ion_mz("C6H15O4P", "[M+H]+")

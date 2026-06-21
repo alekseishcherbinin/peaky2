@@ -655,8 +655,21 @@ def _known_species(polarity: str = "negative") -> dict:
     # seen ONLY as the reagent adduct, so do NOT require the deprotonation channel.
     perfluoroacid = {f"C{n}HF{2 * n - 1}O2": f"perfluoro-C{n} acid (PFCA)"
                      for n in range(2, 13)}
+    # Chlorinated paraffins (SCCP/MCCP/LCCP): saturated CnH(2n+2-x)Clx, the
+    # persistent-organic-pollutant family the user's screenshot showed (C10H17Cl5 ..
+    # C14H22Cl8). Cl 3-15 is FAR above the organic grid's max_Cl (<=2), so they are
+    # never enumerated -> they land in 'unexplained'. Supply the (tight, 2-parameter)
+    # family as known formulas; they commit ONLY with a confirmed ³⁷Cl envelope, so
+    # this is safe despite the wide n/x range. Listing absent ones is harmless.
+    chlorinated_paraffin = {}
+    for _n in range(10, 31):
+        for _x in range(3, 16):
+            _h = 2 * _n + 2 - _x
+            if _h >= 1:
+                chlorinated_paraffin[f"C{_n}H{_h}Cl{_x}"] = f"chlorinated paraffin C{_n}Cl{_x}"
     return {"atmospheric": atmos, "nitroaromatic": nitroaromatic,
-            "perfluoroacid": perfluoroacid, "contaminant:silanediol": contam}
+            "perfluoroacid": perfluoroacid, "chlorinated_paraffin": chlorinated_paraffin,
+            "contaminant:silanediol": contam}
 
 
 def run_pass0_known(client, sample_id: str, ledger: pd.DataFrame,
@@ -739,9 +752,20 @@ def run_pass0_known(client, sample_id: str, ledger: pd.DataFrame,
                    else "nitroaromatic" if fam == "nitroaromatic"
                    else "organophosphate" if fam == "organophosphate"
                    else "perfluoroacid" if fam == "perfluoroacid"
+                   else "chlorinated-paraffin" if fam == "chlorinated_paraffin"
                    else "contaminant")
             fam_kids = kids[kids["compound_formula"] == r["compound_formula"]]
             n_kids = int((fam_kids["sample_peak_id"] != pid).sum())
+            # chlorinated paraffins (Cl is off the organic grid at Cl>2): commit ONLY
+            # when the ³⁷Cl envelope is confirmed (>=2 matched ³⁷Cl satellites), so a
+            # CnHmClx mass coincidence is rejected. Cl IS isotope-confirmable (unlike
+            # monoisotopic F/P), and the server's aggregate score is artificially low
+            # for ¹⁵N-labelled poly-Cl (¹⁴N phantoms + wide envelope), so we lock on
+            # the isotope evidence instead of the depressed compound_score.
+            if fam == "chlorinated_paraffin" and n_kids < 2:
+                log(f"[pass0] skip {r['compound_formula']} @{float(r['sample_peak_mz']):.4f}: "
+                    f"³⁷Cl envelope not confirmed (n_kids={n_kids})")
+                continue
             conf = (f"Good ({tag})" if float(r["ion_score"]) >= 0.7
                     or n_kids >= 2 else f"Low ({tag})")
             L.commit_assignment(
@@ -765,7 +789,10 @@ def run_pass0_known(client, sample_id: str, ledger: pd.DataFrame,
                                if fam == "organophosphate"
                                else "; perfluorocarboxylic acid (F off the grid); "
                                "known PFCA series formula, exact-mass committed"
-                               if fam == "perfluoroacid" else "")))
+                               if fam == "perfluoroacid"
+                               else "; chlorinated paraffin (Cl off the grid); ³⁷Cl "
+                               f"envelope confirmed ({n_kids} satellites), isotope-locked"
+                               if fam == "chlorinated_paraffin" else "")))
             out["committed"] += 1
             L.lock_peaks(ledger, [pid])
             out["locked"] += 1
