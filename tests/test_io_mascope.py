@@ -117,6 +117,37 @@ IO.fetch_batch_peaks(_LP(), "DS", _name)
 check("fetch_batch_peaks escapes the ^ regex anchor in the batch name",
       _LP.seen == IO.escape_batch(_name) and r"\^" in _LP.seen, _LP.seen)
 
+# ---------- flatten_match_tree re-anchors a 100%-labelled (^N) reagent ----------
+# The ¹⁵N nitrate adduct: server tags the all-light ¹⁴N form as the M0 base (no
+# signal) and the single-¹⁵N line (the REAL monoisotopic ion) as a '15N' child.
+# flatten must move is_base onto the ¹⁵N line, else the whole channel is dropped.
+def _iso(isof, mz, pmz, inten, pid):
+    return {"target_isotope_formula": isof, "mz": mz, "sample_peak_mz": pmz,
+            "sample_peak_intensity": inten, "sample_peak_id": pid,
+            "relative_abundance": 1.0, "match_score": 0.96, "match_category": 2,
+            "match_abundance_error": 0.0}
+_no3_tree = [{"target_compound_formula": "C4H6O4", "match_score": 0.96, "match_category": 2,
+    "children": [{"target_ion_formula": "C4H6O7^N-", "match_score": 0.96, "match_category": 2,
+        "ionization_mechanism_id": "m15", "children": [
+            _iso("C4H6O7^N-", 180.015, 180.005, 0.0, "p0"),       # ¹⁴N phantom base, no signal
+            _iso("[15N]C4H6O7-", 181.012, 181.012, 6312.0, "p1")]}]}]   # real ¹⁵N peak
+_fn = IO.flatten_match_tree(_no3_tree)
+_b = _fn[_fn["is_base"]]
+check("flatten re-anchors ^N reagent base onto the ¹⁵N peak",
+      len(_b) == 1 and abs(float(_b["theo_mz"].iloc[0]) - 181.012) < 1e-3
+      and float(_b["sample_peak_intensity"].iloc[0]) == 6312.0, _b[["theo_mz", "is_base"]].to_dict())
+check("flatten leaves the phantom ¹⁴N base non-base",
+      not bool(_fn[(_fn["theo_mz"] == 180.015)]["is_base"].iloc[0]))
+# control: a NON-labelled ion is untouched (base stays the all-light M0)
+_plain = [{"target_compound_formula": "C9H14O5", "match_score": 0.9, "match_category": 2,
+    "children": [{"target_ion_formula": "C9H13O5-", "match_score": 0.9, "match_category": 2,
+        "ionization_mechanism_id": "mH", "children": [
+            _iso("C9H13O5-", 201.076, 201.076, 5000.0, "q0"),
+            _iso("[13C]C8H13O5-", 202.079, 202.079, 500.0, "q1")]}]}]
+_pf = IO.flatten_match_tree(_plain)
+check("flatten does NOT re-anchor a normal (no-^) ion",
+      abs(float(_pf[_pf["is_base"]]["theo_mz"].iloc[0]) - 201.076) < 1e-3)
+
 # ---------- estimate_offset: rough offset from the sample's own matches ----------
 from mascope_assign import chemistry as _C  # noqa: E402
 # build a synthetic match table at a uniform -1.9 ppm offset (Br-CIMS)

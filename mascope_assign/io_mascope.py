@@ -333,6 +333,7 @@ def flatten_match_tree(tree: list[dict]) -> pd.DataFrame:
             isc = ion.get("match_score")
             icat = ion.get("match_category")
             mech = ion.get("ionization_mechanism_id")
+            ion_rows: list[dict] = []
             for iso in ion.get("children", []) or []:
                 iso_f = iso.get("target_isotope_formula")
                 label, is_base = parse_isotope_label(iso_f)
@@ -348,7 +349,7 @@ def flatten_match_tree(tree: list[dict]) -> pd.DataFrame:
                     ppm = (float(spk_mz) - float(theo)) / float(theo) * 1e6
                 else:
                     ppm = None
-                rows.append({
+                ion_rows.append({
                     "compound_formula": cf, "compound_score": cs, "compound_category": cc,
                     "ion_formula": ifl, "ion_score": isc, "ion_category": icat,
                     "mechanism_id": mech,
@@ -359,7 +360,36 @@ def flatten_match_tree(tree: list[dict]) -> pd.DataFrame:
                     "sample_peak_intensity": iso.get("sample_peak_intensity"),
                     "ppm_error": ppm, "abundance_error": iso.get("match_abundance_error"),
                 })
+            # ISOTOPICALLY-LABELLED REAGENT (^N = ¹⁵N nitrate): the server models the
+            # reagent N as natural-abundance, so it tags the all-light form as the M0
+            # base (a PHANTOM at the ¹⁴N mass with NO signal) and the single-¹⁵N line
+            # -- the ACTUAL monoisotopic ion, since the reagent is 100% ¹⁵N -- as a
+            # '15N' isotopologue (is_base=False). Re-anchor the base onto that line so
+            # the assignment passes (which commit only is_base peaks) see the real peak.
+            if "^N" in str(ifl or ""):
+                _reanchor_labelled_reagent(ion_rows, delta=0.997035, label="15N")
+            rows.extend(ion_rows)
     return pd.DataFrame(rows)
+
+
+def _reanchor_labelled_reagent(ion_rows: list[dict], *, delta: float, label: str) -> None:
+    """Move is_base from the (phantom, signal-less) all-light M0 onto the single
+    heavy-reagent-isotope line for a 100%-labelled reagent. In place. No-op unless
+    the all-light base exists and a matching heavy line sits delta higher."""
+    base = next((r for r in ion_rows if r.get("is_base")), None)
+    if base is None or base.get("theo_mz") in (None, 0):
+        return
+    target = float(base["theo_mz"]) + delta
+    cand = [r for r in ion_rows
+            if r.get("iso_label") == label and r.get("theo_mz")]
+    if not cand:
+        return
+    new_base = min(cand, key=lambda r: abs(float(r["theo_mz"]) - target))
+    if abs(float(new_base["theo_mz"]) - target) > 0.01:
+        return
+    base["is_base"] = False
+    new_base["is_base"] = True
+    new_base["iso_label"] = "M0"
 
 
 MATCH_WORKERS = 5   # concurrent match_compounds batches (I/O-bound; server-safe)
