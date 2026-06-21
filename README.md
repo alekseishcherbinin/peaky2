@@ -67,75 +67,24 @@ so `pytest tests/` collects and passes them. CI runs the suite with no creds.
 - Heteroatoms enter the neutral only with positive evidence; relaxed filtering is
   "earned by evidence" (chain membership / isotope confirmation), never default.
 
-## Current status (2026-06-16 — see ROADMAP.md for full state, lessons + next steps)
+## Current status (validation set: the orange-peel batches — full history in ROADMAP.md)
 
-Two validated modes now:
-- **Negative Br-CIMS** (reference) — `<sample-id>` 404'd on <server>; the same
-  physical sample lives at `<sample-id>` (<dataset>,
-  08:21, −1.99 ppm). Full run: **22/22 flagships + 0 junk** (offset-aware
-  check_flagships), 263 M0 / 177 Identified.
-- **Positive urea-CIMS** (`uronium` context, NEW) — `<sample-id>`. Full
-  pipeline at the −2.45 ppm offset: **719 M0 (604 Id), signal explained 64%→81%
-  after the PDMS/siloxane-ladder pass** (`siloxane.py`). Outputs in
-  `~/mascope-output/uronium-v5/`. The session added: positive context + urea
-  reagent library, offset-tolerant calibration (calibrate/confidence/relabel/
-  tiers/arbitration + `estimate_offset` pre-cal), Br-pass polarity guards, the
-  dedicated siloxane pass, and a multi-file "experiment" merge. **560+ tests green.**
+The validation set is the **orange-peeling** experiment in *Aleksei's workspace*, run
+end to end through the batch pipeline (representative-sample assign → merge → clustering
+→ Van Krevelen → PDF report):
 
-Earlier reference numbers (v44, the −0.6 ppm Br copy), cutoff 100:
-- 269 M0, **65.7% peaks / 91.6% signal explained**, 21/21 flagships, 0 junk,
-  ledger clean, **446 offline tests green**. **Tiered: 170 Identified / 99
-  Candidate** (`tiers.py`; now also a mass-error-distribution gate, a
-  CO₃-background-channel gate, and degeneracy-awareness). Roles: M0 / iso_child /
-  reagent / **artifact** (ringing) / unexplained. New modules `degeneracy.py`
-  (honest cross-family degeneracy) + `cleanup.py` (isotope-confirmed recovery,
-  bromide-cluster labelling, ringing-artifact flagging). Outputs archived
-  per-version in `~/mascope-output/assign-dev/v*/`.
-- ⚠️ A tested reagent-formula / `[81BrO]-` fix is in the working tree but NOT yet
-  in an output — **re-run to v45 next session** (ROADMAP "0. PICK UP HERE").
-- **Composite-peak detection (`detect_composites`)**: the M+1 region (13C/29Si)
-  is halogen-free, so it scales only with the assigned compound; if observed M0
-  exceeds the M+1-implied intensity, an unresolved co-eluting compound shares
-  the m/z. Flags (does not demote) + reads the co-component halogen off the
-  even-shift residual. The silanediol C8H26O5Si4 (393) scores only 35% in
-  Mascope because it is ~45% co-eluting BrCl -- formula (Si4, proven by +74.019
-  rung spacing) and prediction (binomial) are BOTH correct; the peak is mixed.
-  n=2 is clean. New `composite_note` column, surfaced in Identified + ownership.
-- **Isotope-envelope completion (`complete_isotope_envelopes`)**: predicts each
-  committed ion's full M+1/M+2/M+4 envelope (`isotopes.isotope_pattern`,
-  per-element convolution incl. Si/Br/Cl combos) and claims it — ~44% of the
-  bright "residual"/Candidate peaks were isotope satellites of brighter peaks,
-  not independent compounds. The 393/395 case: the silanediol Si4+Br M+2 at
-  395 was mis-assigned a phantom `C8H12ClF6NO2S` because its M+4/M+2 ratio
-  (~0.26) mimics a Cl doublet; now 395/397 are its envelope. Runs before pass 4
-  (so satellites never reach the iso-pair stage) and post-audit. iso_child rose
-  276→304; peaks-explained 58.6→60.6%.
-- **Pass 6 ladder gap-fill (`ladders.py`)**: walks homolog/oxidation diagonals
-  out from committed anchors (+O/+CO/+CO2/+CH2O/±CH2/+C2H4/-H2O, same adduct)
-  and fills the gaps, gated hard against the false positives the adversarial
-  diagonal analysis surfaced (fluorinated/Si contaminant ladders excluded,
-  81Br/13C isotope-satellite guard, O<=min(C,9), unexplained-only, Candidate
-  tier). Di-bromide [M+HBr+Br]- gaps need the +HBr pairing (bromine-free
-  neutral also at [M+Br]-) as corroboration. Adds 7 SOA homolog/oxidation
-  rungs. The diagonals are MOSTLY contaminants + isotope satellites, not SOA —
-  only a handful of genuine biogenic-SOA ladders survive verification.
-- **Di-bromide SOA clusters (the ex-"unsolvable C/H lattice")**: the bright
-  n_Br=2 residual is biogenic SOA (mono-/sesquiterpene oxidation products)
-  detected as `[M+HBr+Br]-` reagent clusters, NOT exotic organohalogens. 10
-  now assigned (e.g. 409.0015 = C15H22O3). Enabled by registering the
-  di-bromide frames + the user's server-side `+Br2-` mechanism, and a
-  pre-pass-4 carbon-clamp that frees O15-monster-occupied peaks for re-claim.
-- **Ambient acids un-buried**: `[Br1+acid]-` is the `[M+Br]-` analyte channel,
-  so formic acid (232k cps), acetic, pinic etc. are now Identified analytes,
-  not "reagent". Reagent role bucket 24 -> 11; even-n bare clusters (Br2-.)
-  labelled.
-- Pipeline is now 6 passes (0: known species, 1: backbone+calibration, 2: GKA,
-  3: evidence-opened families, 4: residual iso-pairs/series, 5: completion)
-  plus two post-run audits (isotope physics, calibrated mass gate).
-- **Regression protection**: `python3 scripts/check_flagships.py <ledger.csv>`
-  after every change. Git history in this directory is the change log.
-- **Remaining frontier**: multi-halogen C/H-lattice families, unsolvable from
-  the sum spectrum — blocked on time-resolved data. See `ROADMAP.md`.
+- **Orange peeling (Br⁻ CIMS)** — 80 samples / ~96 min. 6 representative files
+  (5 time-spaced + max-TIC) → **merged 502 M0 (402 Identified / 100 Candidate)**,
+  ~4× the per-file coverage.
+- **Orange peeling (Ur⁺ CIMS)** — 81 samples / ~97 min. 6 representative files →
+  **merged 1319 M0 (1065 Identified / 254 Candidate)**; the positive-mode NH₄→amine
+  co-variation gate is applied at merge.
+
+Reproduce with `mascope-assign batch --batch "<your batch>" --reagent <Br|Ur|NO3|auto>`
+(see [QUICKSTART.md](QUICKSTART.md)); regenerate the figures + report offline with
+`mascope-assign report`. The full pipeline (6 passes + audits, the siloxane / composite /
+isotope-envelope / ladder logic, tiering, calibration) and its development history live in
+`ROADMAP.md` and `SKILL.md`.
 
 ## Performance notes
 

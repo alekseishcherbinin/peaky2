@@ -155,16 +155,20 @@ check("_REPO_ENV points at the repo-root .env (next to the package)",
 # ---------- live smoke (opt-in) ----------
 if os.environ.get("MASCOPE_LIVE") == "1":
     print("\n-- live smoke --")
-    SID = os.environ.get("MASCOPE_SID", "<sample-id>")
     cl = IO.connect()
-    peaks = IO.fetch_peaks(cl, SID, use_cache=False)
-    check("live: peaks fetched", peaks is not None and len(peaks) > 0, None if peaks is None else peaks.shape)
     mech = IO.resolve_mechanism_ids(cl, ["-H+", "+Br-"])
     check("live: mechanisms resolved", set(mech) == {"-H+", "+Br-"}, mech)
-    scored = IO.score_candidates(cl, SID, ["C4H6O2", "C6H8O3"], mechanism_ids=None)
-    check("live: score_candidates returns per-iso rows", len(scored) > 0, len(scored))
-    check("live: at least one high ion_score",
-          (scored["ion_score"].fillna(0) > 0.8).any())
+    SID = os.environ.get("MASCOPE_SID")          # set to one of YOUR sample ids
+    if SID:
+        peaks = IO.fetch_peaks(cl, SID, use_cache=False)
+        check("live: peaks fetched", peaks is not None and len(peaks) > 0,
+              None if peaks is None else peaks.shape)
+        scored = IO.score_candidates(cl, SID, ["C4H6O2", "C6H8O3"], mechanism_ids=None)
+        check("live: score_candidates returns per-iso rows", len(scored) > 0, len(scored))
+        check("live: at least one high ion_score",
+              (scored["ion_score"].fillna(0) > 0.8).any())
+    else:
+        print("(set MASCOPE_SID=<sample id> to also smoke peak fetch + scoring)")
 else:
     print("\n(live smoke skipped; set MASCOPE_LIVE=1 to run)")
 

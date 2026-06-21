@@ -619,7 +619,7 @@ check("envelope: a High/strong-score victim is NOT displaced (tier-NA safe)",
 # ---------- detect_composites (silanediol-on-BrCl even/odd test) ----------
 # build a silanediol n=4 envelope: M0 inflated ~45% by a coincident BrCl
 # compound. Odd shifts (M+1) = pure silanediol; even (M0/M+2/M+4) carry the
-# extra halogen. Heights from the real <sample-id> data.
+# extra halogen. Heights from real Br-CIMS data.
 import mascope_assign.chemistry as _CH  # noqa: E402
 mz0 = _CH.ion_mz("C8H26O5Si4", "[M+Br]-")   # 393.0046
 comp = mk_ledger([("M0", mz0, 20086.0), ("M1", mz0 + 1.0008, 2698.0),
