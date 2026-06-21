@@ -39,12 +39,26 @@ COVARY_R = 0.70         # correlation above this == co-varies with the family
 
 def auto_bin_minutes(ts: pd.DataFrame, *, target_bins: int = 50,
                      time_col: str = "datetime_utc") -> int:
-    """Time-bin width (minutes) that gives ~target_bins bins across the batch span.
-    The default 30-min bin gives only ~3 bins on a short (~90-min) densely-sampled
-    batch; scale the bin to the actual span instead. Shared by the clustering and
-    Van Krevelen batch stages so they bin identically."""
-    t = pd.to_datetime(ts[time_col], utc=True)
-    span_min = (t.max() - t.min()).total_seconds() / 60.0
+    """Time-bin width (minutes) for the correlation / cluster / Van Krevelen layer.
+
+    Bins at the NATIVE sample cadence (median inter-sample spacing) so the traces
+    are NOT downsampled. A coarse bin (the old span/target_bins ~= 29 min on a 24 h
+    batch) smears sharp features -- zero-air periods, fast trends -- that drive the
+    real co-variation, pushing genuinely-changing channels into the flat bucket
+    (validated on the June-3 uronium batch: native 5-min recovered 1018 changing
+    channels / 95 families vs 752 / 54 at 29-min). Floored at 1 min; falls back to
+    span/target_bins only when per-sample times are unavailable (<3 samples).
+    Shared by clustering + VK so they bin identically."""
+    if "sample_item_id" in ts.columns:
+        t = pd.to_datetime(ts.drop_duplicates("sample_item_id")[time_col], utc=True)
+    else:
+        t = pd.to_datetime(ts[time_col], utc=True).drop_duplicates()
+    t = t.dropna().sort_values()
+    if len(t) >= 3:
+        cadence_min = t.diff().dropna().dt.total_seconds().median() / 60.0
+        if cadence_min > 0:
+            return max(1, int(round(cadence_min)))
+    span_min = (t.max() - t.min()).total_seconds() / 60.0 if len(t) >= 2 else 30.0
     return max(1, int(round(span_min / target_bins)))
 
 

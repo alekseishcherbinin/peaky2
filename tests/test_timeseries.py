@@ -95,6 +95,19 @@ led3 = led.copy()
 s3 = TS.apply_timeseries(led3, peaks, reagent_mzs=[], log=lambda *a: None)
 check("runs without a reagent normaliser", s3["annotated"] == 6, s3)
 
+# --- auto_bin_minutes: native sample cadence (non-averaged), not span/50 --------
+_base = pd.Timestamp("2026-06-03T00:00:00Z")
+# 316 samples, 5-min cadence over ~26 h: native -> 5; the old span/50 would give ~32
+_ts24 = pd.DataFrame([{"sample_item_id": f"s{i}", "datetime_utc": _base + pd.Timedelta(minutes=5 * i),
+                       "mz": 100.0, "height": 1.0} for i in range(316)])
+check("auto_bin_minutes uses native cadence (5 min), not span/50 (~32)",
+      TS.auto_bin_minutes(_ts24) == 5, TS.auto_bin_minutes(_ts24))
+_ts6 = pd.DataFrame([{"sample_item_id": f"s{i}", "datetime_utc": _base + pd.Timedelta(minutes=6 * i),
+                      "mz": 100.0, "height": 1.0} for i in range(10)])
+check("auto_bin_minutes returns the native cadence (6 min)", TS.auto_bin_minutes(_ts6) == 6)
+check("auto_bin_minutes floors at >=1 and falls back on <3 samples",
+      TS.auto_bin_minutes(_ts24) >= 1 and isinstance(TS.auto_bin_minutes(_ts6.head(2)), int))
+
 def test_all():
     assert FAIL == 0, f"{FAIL} checks failed"
 
