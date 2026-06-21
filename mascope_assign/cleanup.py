@@ -395,6 +395,45 @@ def reclaim_satellites(ledger: pd.DataFrame, *, ppm: float = 6.0, log=print) -> 
     return {"reclaimed": n}
 
 
+F_DEMOTE_MIN = 4   # F count above which an unanchored, non-PFCA fit is an F-monster
+
+
+def _is_pfca(cnt: dict) -> bool:
+    """Perfluorocarboxylic acid CnHF(2n-1)O2 (TFA, PFPrA, ... PFOA)."""
+    nC = cnt.get("C", 0)
+    return (nC >= 2 and cnt.get("H", 0) == 1 and cnt.get("O", 0) == 2
+            and cnt.get("F", 0) == 2 * nC - 1)
+
+
+def demote_unconfirmed_fluorine(ledger: pd.DataFrame, *, f_min: int = F_DEMOTE_MIN,
+                                log=print) -> dict:
+    """Demote M0 assignments resting on UNCONFIRMED fluorine. ¹⁹F is 100%
+    monoisotopic, so a high-F formula has NO isotope twin to corroborate it; when it
+    is also not a known PFCA and carries no Cl/Br/S anchor (whose ³⁷Cl/⁸¹Br/³⁴S
+    pattern WOULD confirm a heavy atom), a high-F fit is almost always a mass
+    coincidence ('F-monster', e.g. C11H6F16). Demote Identified->Candidate and flag
+    below_assignability. Real PFCAs and isotope-anchored F species are kept."""
+    n = 0
+    has_ba = "below_assignability" in ledger.columns
+    for i in ledger.index[ledger["role"] == L.ROLE_M0]:
+        cnt = C.parse_formula(str(ledger.at[i, "neutral_formula"] or ""))
+        if cnt.get("F", 0) < f_min:
+            continue
+        if _is_pfca(cnt) or cnt.get("Cl", 0) or cnt.get("Br", 0) or cnt.get("S", 0):
+            continue
+        if str(ledger.at[i, "tier"]) == "Identified":
+            ledger.at[i, "tier"] = "Candidate"
+        if has_ba:
+            ledger.at[i, "below_assignability"] = True
+        note = (f"unconfirmed fluorine (F{cnt.get('F', 0)}; ¹⁹F monoisotopic, no "
+                "Cl/Br/S anchor, not a PFCA) -- likely mass coincidence")
+        prev = str(ledger.at[i, "commentary"] or "")
+        ledger.at[i, "commentary"] = (prev + "; " + note) if prev and prev != "nan" else note
+        n += 1
+    log(f"[cleanup] demoted {n} unconfirmed-fluorine M0 (F>={f_min}, F-monsters)")
+    return {"f_demoted": n}
+
+
 def run_cleanup(client, sample_id, ledger, profile, cfg, *, log=print) -> dict:
     """Orchestrate the cleanup steps (recovery first, so a recovered molecule
     isn't then mislabelled a cluster/artifact; satellite reclaim last)."""
@@ -402,9 +441,11 @@ def run_cleanup(client, sample_id, ledger, profile, cfg, *, log=print) -> dict:
     clu = label_bromide_clusters(ledger, client, sample_id, log=log)
     art = flag_ringing_artifacts(ledger, log=log)
     sat = reclaim_satellites(ledger, log=log)
+    fdm = demote_unconfirmed_fluorine(ledger, log=log)
     return {"recovered": rec["recovered"], "clusters": clu["labelled"],
             "cluster_covalent_ties": clu.get("covalent_ties", 0),
-            "artifacts": art["flagged"], "reclaimed_satellites": sat["reclaimed"]}
+            "artifacts": art["flagged"], "reclaimed_satellites": sat["reclaimed"],
+            "f_demoted": fdm["f_demoted"]}
 
 
 def prefer_amine_over_ammonium(ledger: pd.DataFrame, *, ts_peaks=None, r_min: float = 0.7,

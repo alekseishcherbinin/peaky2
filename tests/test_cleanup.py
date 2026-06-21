@@ -150,6 +150,24 @@ check("amine: saturated X (no valid amine) -> NH4 forced/kept",
 check("amine: summary counts", outa == {"relabeled": 1, "kept_corroborated": 1, "forced_nh4": 1}, outa)
 check("amine: relabel noted in tier_reason", "re-read" in str(leda.loc[0, "tier_reason"]))
 
+# ---------- demote_unconfirmed_fluorine (F-monster curb) ----------
+ledf = pd.DataFrame([
+    dict(role="M0", neutral_formula="C11H6F16", tier="Identified", commentary="", below_assignability=False),
+    dict(role="M0", neutral_formula="C2HF3O2",  tier="Identified", commentary="", below_assignability=False),  # TFA (PFCA)
+    dict(role="M0", neutral_formula="C8HF15O2", tier="Identified", commentary="", below_assignability=False),  # PFOA (PFCA, F15)
+    dict(role="M0", neutral_formula="C6H4ClF5O", tier="Identified", commentary="", below_assignability=False), # Cl-anchored
+    dict(role="M0", neutral_formula="C3H5FO2",  tier="Identified", commentary="", below_assignability=False),  # low-F (F1)
+])
+outf = CU.demote_unconfirmed_fluorine(ledf, log=lambda *a: None)
+check("F-monster demoted: only the unanchored high-F non-PFCA", outf == {"f_demoted": 1}, outf)
+check("F-monster C11H6F16 -> Candidate + below_assignability",
+      ledf.loc[0, "tier"] == "Candidate" and bool(ledf.loc[0, "below_assignability"]))
+check("PFCA (TFA, PFOA) kept Identified",
+      ledf.loc[1, "tier"] == "Identified" and ledf.loc[2, "tier"] == "Identified")
+check("Cl-anchored F kept; low-F kept",
+      ledf.loc[3, "tier"] == "Identified" and ledf.loc[4, "tier"] == "Identified")
+
+
 def test_all():
     assert FAIL == 0, f"{FAIL} checks failed"
 
