@@ -60,9 +60,24 @@ class Series:
 # ---------------------------------------------------------------------------
 # data: detect homologous series in the assigned neutral formulas
 # ---------------------------------------------------------------------------
+def _is_f_monster(cnt: dict) -> bool:
+    """Unconfirmed-fluorine 'monster': F>=4, not a PFCA CnHF(2n-1)O2, and no Cl/Br/S
+    anchor -- ¹⁹F is monoisotopic so these are mass coincidences (the cleanup demote
+    set). Excluded from the GKA so the fluorinated panel shows REAL PFAS (the PFCAs),
+    not the demoted coincidences."""
+    nF, nC = cnt.get("F", 0), cnt.get("C", 0)
+    if nF < 4:
+        return False
+    is_pfca = (nC >= 2 and cnt.get("H", 0) == 1 and cnt.get("O", 0) == 2 and nF == 2 * nC - 1)
+    anchored = cnt.get("Cl", 0) or cnt.get("Br", 0) or cnt.get("S", 0)
+    return not (is_pfca or anchored)
+
+
 def _neutral_masses(ledger: pd.DataFrame) -> dict[str, float]:
     """{neutral_formula -> neutral monoisotopic mass} over the assigned M0 set,
-    one entry per distinct neutral (deduped across adduct channels)."""
+    one entry per distinct neutral (deduped across adduct channels). Excludes
+    unconfirmed-fluorine 'monsters' (the demoted coincidence fits) so the GKA's
+    fluorinated panel shows the real PFAS (the PFCAs), not ¹⁹F mass coincidences."""
     if "role" in ledger.columns:
         led = ledger[ledger["role"] == "M0"]
     else:
@@ -73,6 +88,8 @@ def _neutral_masses(ledger: pd.DataFrame) -> dict[str, float]:
         if not f or f == "nan":
             continue
         try:
+            if _is_f_monster(C.parse_formula(f)):
+                continue
             out[f] = C.neutral_mass(f)
         except Exception:
             pass
