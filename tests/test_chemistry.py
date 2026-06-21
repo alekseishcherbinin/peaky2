@@ -45,6 +45,15 @@ check("[M-H]- of C9H14O4 ~ 185.0819",
 # nitrate adduct adds NO3 (61.98818) minus electron
 check("[M+NO3]- shift ~ +61.98818", approx(C.ADDUCT_SHIFTS["[M+NO3]-"], 61.98818, 1e-3),
       C.ADDUCT_SHIFTS["[M+NO3]-"])
+# ¹⁵N-labelled nitrate reagent: the cluster adds ¹⁵N, so +62.98540, exactly
+# 0.997035 Da (the ¹⁵N-¹⁴N delta) heavier than the ¹⁴N adduct above.
+check("[M+^NO3]- shift ~ +62.98540",
+      approx(C.ADDUCT_SHIFTS["[M+^NO3]-"], 62.98540, 1e-3), C.ADDUCT_SHIFTS["[M+^NO3]-"])
+check("¹⁵N nitrate is +0.997035 vs ¹⁴N",
+      approx(C.ADDUCT_SHIFTS["[M+^NO3]-"] - C.ADDUCT_SHIFTS["[M+NO3]-"], 0.997035, 1e-5),
+      C.ADDUCT_SHIFTS["[M+^NO3]-"] - C.ADDUCT_SHIFTS["[M+NO3]-"])
+check("nitrophenol [M+^NO3]- ion m/z ~ 202.0123 (server-observed)",
+      approx(C.ion_mz("C6H5NO3", "[M+^NO3]-"), 202.0123, 2e-3), C.ion_mz("C6H5NO3", "[M+^NO3]-"))
 # [M+H]+ of H2O -> 19.018
 check("[M+H]+ of H2O ~ 19.0178", approx(C.ion_mz("H2O", "[M+H]+"), 19.0178, 1e-3),
       C.ion_mz("H2O", "[M+H]+"))

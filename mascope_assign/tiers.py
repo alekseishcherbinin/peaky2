@@ -168,7 +168,9 @@ def _alt_raw(a: dict) -> float | None:
     return None
 
 
-_ADDUCT_TOKENS = re.compile(r"([+-])([A-Za-z0-9]+)")
+# optional '^' after the sign = heavy-isotope-labelled reagent (e.g. +^NO3 for the
+# ¹⁵N nitrate cluster); element COUNTS are isotope-independent so drop the marker.
+_ADDUCT_TOKENS = re.compile(r"([+-])\^?([A-Za-z0-9]+)")
 
 
 def _ion_counts(neutral, adduct) -> dict | None:

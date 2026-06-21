@@ -190,6 +190,7 @@ ADDUCT_TO_MECH = {
     "[M+Cl]-": "+Cl-",
     "[M+I]-": "+I-",
     "[M+NO3]-": "+NO3-",
+    "[M+^NO3]-": "+^NO3-",          # ¹⁵N-labelled nitrate reagent cluster
     "[M+HSO4]-": "+HSO4-",
     "[M+Br2]-": "+Br2-",
     "[M+Br3]-": "+Br3-",

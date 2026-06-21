@@ -283,6 +283,7 @@ _ADDUCT_DESC = {
     "[M+CO3]-": "CO3- cluster", "[M+HBr+CO3]-": "HBr.CO3- cluster", "[M+HSO4]-": "HSO4- cluster",
     "[M+(CH4N2O)H]+": "urea cluster", "[M+Na]+": "Na+ adduct", "[M+NH4]+": "NH4+ adduct",
     "[M+Cl]-": "Cl- cluster", "[M+I]-": "I- cluster",
+    "[M+NO3]-": "NO3- cluster", "[M+^NO3]-": "¹⁵NO3- cluster",
 }
 
 

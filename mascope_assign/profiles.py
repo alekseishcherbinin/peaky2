@@ -54,7 +54,23 @@ NO3 = ReagentProfile(
     detect_adduct="[M+NO3]-", context="ambient-air",
     aliases=("no3", "nitrate", "no3-", "nitrate-cims"))
 
-PROFILES: dict[str, ReagentProfile] = {BR.name: BR, UR.name: UR, NO3.name: NO3}
+# ¹⁵N-labelled nitrate CIMS (server reagent '^NO3-'). Same chemistry as NO3 above,
+# but the cluster adduct is the heavy [M+¹⁵NO3]⁻ = [M+^NO3]- (+62.9855, mechanism
+# '+^NO3-'); the deprotonation channel [M-H]- is isotope-independent. Reagent
+# cluster ions ((H^NO3)ₙ·^NO3⁻) usually sit below a >120 m/z acquisition window, so
+# the correlation layer normalises on TIC, not on a reagent ion. detect_adduct is
+# [M+^NO3]- so auto-detect distinguishes it from the ¹⁴N NO3 profile above.
+NO3_15N = ReagentProfile(
+    name="NO3_15N", label="¹⁵NO₃⁻ CIMS", polarity="-",
+    adducts=["[M+^NO3]-", "[M-H]-"],
+    normaliser="tic", reagent_ion_re=None,
+    ranges="C0-40 H0-60 N0-3 O0-25 S0-2",
+    detect_adduct="[M+^NO3]-", context="ambient-air",
+    aliases=("no3-15n", "15no3", "15no3-", "^no3", "^no3-", "15n-nitrate",
+             "nitrate-15n", "nitrate-15n-cims"))
+
+PROFILES: dict[str, ReagentProfile] = {
+    BR.name: BR, UR.name: UR, NO3.name: NO3, NO3_15N.name: NO3_15N}
 _BY_ALIAS = {a: p for p in PROFILES.values() for a in (p.name.lower(), *p.aliases)}
 
 

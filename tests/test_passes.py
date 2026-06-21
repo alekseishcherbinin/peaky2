@@ -46,6 +46,20 @@ check("0.55 -> Suspect", P.confidence_label(0.55, 0.5, 0, False, CFG) == "Suspec
 check("0.40 -> Reject", P.confidence_label(0.40, 0.5, 0, False, CFG) == "Reject")
 check("suffix applied", P.confidence_label(0.75, 0.5, 0, False, CFG, "series") == "Low (series)")
 
+# ---------- _mech_to_adduct: ¹⁵N nitrate label from the server '^N' marker ----
+check("_mech_to_adduct 14N nitrate -> [M+NO3]-",
+      P._mech_to_adduct({"ion_formula": "C6H5N2O6-", "compound_formula": "C6H5NO3"})
+      == "[M+NO3]-")
+check("_mech_to_adduct 15N nitrate (^N) -> [M+^NO3]-",
+      P._mech_to_adduct({"ion_formula": "C6H5NO6^N-", "compound_formula": "C6H5NO3"})
+      == "[M+^NO3]-")
+check("_mech_to_adduct deprotonation unaffected",
+      P._mech_to_adduct({"ion_formula": "C5H7O5-", "compound_formula": "C5H8O5"})
+      == "[M-H]-")
+check("_mech_to_adduct does not add ^ when no marker",
+      P._mech_to_adduct({"ion_formula": "C6H5N2O6-", "compound_formula": "C6H5NO3"})
+      != "[M+^NO3]-")
+
 # ---------- arbitration: CHO beats CHON on a peak ----------
 scored = pd.DataFrame([
     # peak A: CHO strong vs CHON weaker

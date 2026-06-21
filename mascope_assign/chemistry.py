@@ -46,6 +46,11 @@ M: dict[str, float] = {
     "I": 126.9044719,
 }
 M_E = 0.0005485799  # electron mass (Da)
+# Heavy stable isotopes used when a REAGENT is isotopically labelled (the analyte
+# grid itself is monoisotopic). ¹⁵N nitrate CIMS uses a ¹⁵N-labelled NO3 reagent,
+# so its cluster adduct adds ¹⁵N (15.0001089), not ¹⁴N -- a ~0.997 Da shift that
+# would otherwise put every nitrate-adduct assignment ~1 Da off.
+_M_15N = 15.0001088989
 
 # Valence used for the Senior / DBE accounting. O and S are treated divalent
 # (zero DBE contribution); Si tetravalent like C; P trivalent like N for the
@@ -70,6 +75,9 @@ ADDUCT_SHIFTS: dict[str, float] = {
     "[M+Cl]-":  M["Cl"] + M_E,
     "[M+I]-":   M["I"] + M_E,
     "[M+NO3]-": M["N"] + 3 * M["O"] + M_E,
+    # ¹⁵N-labelled nitrate reagent cluster (server mechanism '+^NO3-'); the added
+    # N is ¹⁵N, so this is +62.9855, not the +61.9885 of the ¹⁴N adduct above.
+    "[M+^NO3]-": _M_15N + 3 * M["O"] + M_E,
     "[M+HSO4]-": 2 * M["H"] + M["S"] + 4 * M["O"] - M["H"] + M_E,  # = H + S + 4O
     "[M+CHO2]-": M["C"] + M["H"] + 2 * M["O"] + M_E,   # formate
     "[M+C2H3O2]-": 2 * M["C"] + 3 * M["H"] + 2 * M["O"] + M_E,  # acetate

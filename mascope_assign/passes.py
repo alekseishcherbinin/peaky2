@@ -418,12 +418,20 @@ _DIFF_TO_ADDUCT = {
 
 def _mech_to_adduct(row) -> str:
     """Adduct label from the exact ion-vs-compound element difference."""
-    ci = C.parse_formula(str(row.get("ion_formula") or ""))
+    ion = str(row.get("ion_formula") or "")
+    ci = C.parse_formula(ion)
     cc = C.parse_formula(str(row.get("compound_formula") or ""))
     diff = tuple(sorted(
         (el, ci.get(el, 0) - cc.get(el, 0))
         for el in set(ci) | set(cc) if ci.get(el, 0) != cc.get(el, 0)))
-    return _DIFF_TO_ADDUCT.get(diff, "[M-H]-")
+    add = _DIFF_TO_ADDUCT.get(diff, "[M-H]-")
+    # The element diff cannot see isotopic labelling: a ¹⁵N-nitrate reagent cluster
+    # has the SAME (N+1, O+3) diff as a ¹⁴N one, but the server writes the heavy N
+    # as '^N' in the ion formula. Without this, the ¹⁵N adduct is labelled [M+NO3]-
+    # and the +61.99 (¹⁴N) shift puts ion_mz / jitter ~1 Da off.
+    if add == "[M+NO3]-" and "^N" in ion:
+        return "[M+^NO3]-"
+    return add
 
 
 def commit_winners(ledger: pd.DataFrame, arb: dict, *, pass_no: int, method: str,

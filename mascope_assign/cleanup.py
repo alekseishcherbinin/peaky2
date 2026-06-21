@@ -331,7 +331,7 @@ def _decompose(ion_formula, candidate_set):
 
 def _ion_str(neutral, adduct):
     cnt = dict(C.parse_formula(neutral))
-    for sign, tok in __import__("re").findall(r"([+-])([A-Za-z0-9]+)",
+    for sign, tok in __import__("re").findall(r"([+-])\^?([A-Za-z0-9]+)",
                                               adduct.split("]")[0][2:]):
         for el, k in C.parse_formula(tok).items():
             cnt[el] = cnt.get(el, 0) + (k if sign == "+" else -k)
