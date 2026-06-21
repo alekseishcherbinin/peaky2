@@ -39,7 +39,7 @@ mascope-assign list samples  --batch "<batch>" --dataset "<workspace>"
 mascope-assign assign --sample-id <ID> --reagent Br \
     --height-cutoff 100 --output-dir ~/mascope-output/<name>
 ```
-`--reagent {auto,Br,Ur,…}` forces the analyte channels (a positive/sparse sample
+`--reagent {auto,Br,Ur,NO3,NO3_15N,…}` forces the analyte channels (a positive/sparse sample
 otherwise mis-detects as negative). Heavy work runs on the host Python; a Mascope
 token is read from `~/.mascope/.env` (or `--env` / `$MASCOPE_ENV`). `~5 min` for a
 ~1000-peak sample at cutoff 100. (`python3 scripts/run_assignment.py …` still works
@@ -51,7 +51,7 @@ as a thin forwarder; `python3 -m mascope_assign …` is equivalent to the script
 python3 tests/test_smoke.py          # 2s "install OK" check (no creds, no network)
 pytest tests/                        # or: for t in tests/test_*.py; do python3 "$t"; done
 ```
-833 offline assertions across 30 files, no network. Live smoke for io_mascope:
+850+ offline assertions across 31 files, no network. Live smoke for io_mascope:
 `MASCOPE_LIVE=1 python3 tests/test_io_mascope.py`. **Rule: every code change
 ships with a test; keep the suite green.** Tests use plain asserts and run as
 scripts (exit non-zero on failure); each also exposes a validating `test_all`
@@ -80,7 +80,7 @@ end to end through the batch pipeline (representative-sample assign → merge �
   **merged 1319 M0 (1065 Identified / 254 Candidate)**; the positive-mode NH₄→amine
   co-variation gate is applied at merge.
 
-Reproduce with `mascope-assign batch --batch "<your batch>" --reagent <Br|Ur|NO3|auto>`
+Reproduce with `mascope-assign batch --batch "<your batch>" --reagent <Br|Ur|NO3|NO3_15N|auto>`
 (see [QUICKSTART.md](QUICKSTART.md)); regenerate the figures + report offline with
 `mascope-assign report`. The full pipeline (6 passes + audits, the siloxane / composite /
 isotope-envelope / ladder logic, tiering, calibration) and its development history live in

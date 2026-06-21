@@ -1,8 +1,35 @@
-# AGENT PEAKY — RESUME HERE (updated 2026-06-20, session 4)
+# AGENT PEAKY — RESUME HERE (updated 2026-06-21, session 5)
 
 **Project:** consolidate the Mascope pipeline into ONE scalable, shareable Claude Code
 skill ("peaky"): representative-sample assignment → merge → time-series clustering →
 figures → PDF report. Memory: `agent-peaky` (+ `mascope-sdk-knowledge`, `mascope-assign-package`).
+
+## SESSION 5 (2026-06-21) — ¹⁵N nitrate, native clustering, two-sided halogen handling
+**Server is now `<mascope-server>`** (<server> retired); creds in the repo-root `.env`.
+Ran the full pipeline on two June-3 batches in dataset **"<dataset>"**:
+
+```bash
+# uronium (positive, urea-CIMS):
+mascope-assign batch --reagent Ur \
+  --batch "<uronium-batch>" \
+  --dataset "<dataset>" --out-dir ~/mascope-output/peaky
+# ¹⁵N nitrate (negative):
+mascope-assign batch --reagent NO3_15N \
+  --batch "<nitrate-batch>" \
+  --dataset "<dataset>" --out-dir ~/mascope-output/peaky
+# (add --ts <run>/<tag>_ts.parquet to reuse a cached batch time series and skip the re-fetch)
+```
+Latest outputs: uronium `~/mascope-output/peaky/2026-06-03-Uronium-...-122-600-...104147Z/`
+(1738 M0, OPEs Identified); ¹⁵NO₃⁻ `...Nitrate-...-128-600-...153517Z/` (623 M0, 13
+chlorinated paraffins Identified). **NEW this session (committed):** `NO3_15N` ¹⁵N
+profile + `flatten_match_tree` ¹⁵N re-anchor; `auto_bin_minutes` now bins at the NATIVE
+sample cadence (was ~29-min/24h, smeared zero-air events); two-sided halogen handling
+(PFCA + chlorinated-paraffin + OPE known-species; `demote_unconfirmed_fluorine` after
+apply_tiers). See SKILL.md "Halogen / heteroatom policy" + memory `agent-peaky` SESSION 5.
+**OPEN:** nitrate reagent-ion library (label flat ¹⁵NO₃ clusters → lift explained-%);
+MS2 for the degenerate halogen families; fold the zero-event ambient discriminant into
+clustering. ¹⁵NO₃⁻ ~57% signal explained (rest = mass-degenerate + reagent background).
+
 
 **SESSION 4 — SHAREABILITY REFACTOR (2026-06-20). Goal: a small group `pip install`s + validates on
 THEIR machines.** A 7-dimension review (48 findings) produced a 5-phase plan. DECISIONS: ship as BOTH a

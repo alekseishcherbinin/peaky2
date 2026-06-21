@@ -47,7 +47,7 @@ mascope-assign list samples  --batch "<your batch>" --dataset "<your workspace>"
 ## 4. Assign one sample
 
 ```bash
-mascope-assign assign --sample-id <ID> --reagent <Br|Ur|NO3|auto> \
+mascope-assign assign --sample-id <ID> --reagent <Br|Ur|NO3|NO3_15N|auto> \
     --height-cutoff 100 --output-dir ~/mascope-output/<name>
 ```
 `--reagent` forces the analyte channels (a positive/sparse sample otherwise
@@ -62,7 +62,7 @@ builds cluster figures, a Van Krevelen and a PDF report:
 
 ```bash
 mascope-assign batch --batch "<your batch>" --dataset "<your workspace>" \
-    --reagent <Br|Ur|NO3|auto> --out-dir ~/mascope-output
+    --reagent <Br|Ur|NO3|NO3_15N|auto> --out-dir ~/mascope-output
 ```
 Creates a timestamped run folder `~/mascope-output/<batch-slug>_<UTC>/` with the
 merged ledger, per-file ledgers, cluster/VK figures, and `report_<run-id>.pdf`.
@@ -72,14 +72,21 @@ Regenerate the figures + report later **offline** (no re-assignment) with:
 
 ```bash
 mascope-assign report --run-dir ~/mascope-output/<run-folder> \
-    --reagent <Br|Ur|NO3> --ts ~/mascope-output/<run-folder>/<tag>_ts.parquet
+    --reagent <Br|Ur|NO3|NO3_15N> --ts ~/mascope-output/<run-folder>/<tag>_ts.parquet
 ```
 
 ## Adding your reagent
 
-`Br` (bromide⁻), `Ur` (urea⁺) and `NO3` (nitrate⁻, provisional) are built in. To
-add another **without editing the package**, write a small JSON (or TOML) file and
-pass `--reagent-config`:
+`Br` (bromide⁻), `Ur` (urea⁺), `NO3` (¹⁴N nitrate⁻) and `NO3_15N` (**¹⁵N-labelled
+nitrate⁻**, aliases `15no3`/`^no3-`/`nitrate-15n`) are built in. ¹⁵N nitrate is the
+`+^NO3-` server mechanism: its adduct adds ¹⁵NO₃ (+62.985), and the pipeline
+re-anchors the assignment onto the ¹⁵N isotopologue line (the server tags the
+real peak as a non-base `[15N]` line). Negative mode also carries known-species
+for **PFCAs** (perfluoro-acids, e.g. TFA), **organophosphates** and **chlorinated
+paraffins** (³⁷Cl-confirmed) — isotope-confirmable halogens (Cl/Br/S) are opened
+and tiered on their envelope, while monoisotopic F/P stay off the grid except
+these known families. To add another reagent **without editing the package**,
+write a small JSON (or TOML) file and pass `--reagent-config`:
 
 ```json
 [{"name": "Ac", "label": "Acetate⁻", "polarity": "-",

@@ -59,7 +59,7 @@ Discover data, then assign (the installed console command):
 ```bash
 mascope-assign list datasets
 mascope-assign list samples --batch "<batch>" --dataset "<workspace>"
-mascope-assign assign --sample-id <ID> --reagent <Br|Ur|auto> \
+mascope-assign assign --sample-id <ID> --reagent <Br|Ur|NO3|NO3_15N|auto> \
     --height-cutoff 100 --output-dir ~/mascope-output/<name>
 ```
 (`python3 -m mascope_assign assign …` and the legacy `scripts/run_assignment.py`
@@ -86,6 +86,24 @@ The pipeline was built negative-mode Br-specialized; positive-mode support
   gated on a halogen adduct (its M+1 test misfires without one); the carbon-clamp
   skips Si (²⁹Si dominates the M+1, not ¹³C); di-bromide / iso-pair / `reagent_element`
   logic goes inert when no halogen is in the adduct.
+- **`NO3_15N` context (¹⁵N-labelled nitrate⁻):** server mechanism `+^NO3-`; adduct
+  `[M+^NO3]-` adds ¹⁵NO₃ (+62.985, not the ¹⁴N +61.988). The server models the
+  reagent ¹⁵N as natural-abundance, so it tags the real 100%-¹⁵N peak as a non-base
+  `[15N]` isotopologue and a phantom ¹⁴N line as M0 — `io_mascope.flatten_match_tree`
+  **re-anchors** `is_base` onto the ¹⁵N line (else the whole `[M+^NO3]-` channel is
+  dropped; same ¹⁵N-modeling also depresses the aggregate score of ¹⁵N poly-halogens).
+
+### Halogen / heteroatom policy (two-sided)
+**Isotope-confirmable (Cl/Br/S) → open + tier on the envelope; monoisotopic (F/P) →
+off the grid except specific known families.** Negative pass-0 known-species now
+include: **PFCAs** `CnHF(2n-1)O2` (TFA…PFOA, exact-mass committed — F is off the
+grid so the clean low-F acids would otherwise be missed); **chlorinated paraffins**
+`CnH(2n+2-x)Clx` (SCCP/MCCP/LCCP, committed+locked **only** with a confirmed ³⁷Cl
+envelope ≥2 satellites → Identified, bypassing the ¹⁵N-depressed compound_score);
+positive pass-0 adds **organophosphates** (TEP/TBP/TPPO…, cross-channel-gated since
+P is monoisotopic). `cleanup.demote_unconfirmed_fluorine` (run **after**
+`apply_tiers`) demotes F≥4 M0 that are not a PFCA and lack a Cl/Br/S anchor —
+¹⁹F mass-coincidence "monsters" → Candidate + `below_assignability`.
 - **Mass offset ("be aware of the −X ppm"):** the reported `ppm_error` stays RAW,
   but every quality gate is offset-aware. `io_mascope.estimate_offset` seeds a
   rough offset (`cfg.prior_offset`) for the pre-calibration pass-0 gate; pass-1
