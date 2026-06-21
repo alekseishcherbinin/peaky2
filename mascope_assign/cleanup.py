@@ -427,10 +427,11 @@ def demote_unconfirmed_fluorine(ledger: pd.DataFrame, *, f_min: int = F_DEMOTE_M
             ledger.at[i, "tier"] = "Candidate"
         if has_ba:
             ledger.at[i, "below_assignability"] = True
-        note = (f"unconfirmed fluorine (F{cnt.get('F', 0)}; ¹⁹F monoisotopic, no "
-                "Cl/Br/S anchor, not a PFCA) -- likely mass coincidence")
-        prev = str(ledger.at[i, "commentary"] or "")
-        ledger.at[i, "commentary"] = (prev + "; " + note) if prev and prev != "nan" else note
+        if "commentary" in ledger.columns:
+            note = (f"unconfirmed fluorine (F{cnt.get('F', 0)}; ¹⁹F monoisotopic, no "
+                    "Cl/Br/S anchor, not a PFCA) -- likely mass coincidence")
+            prev = str(ledger.at[i, "commentary"] or "")
+            ledger.at[i, "commentary"] = (prev + "; " + note) if prev and prev != "nan" else note
         n += 1
     log(f"[cleanup] demoted {n} unconfirmed-fluorine M0 (F>={f_min}, F-monsters)")
     return {"f_demoted": n}
