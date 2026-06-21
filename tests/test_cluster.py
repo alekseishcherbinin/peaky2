@@ -15,6 +15,19 @@ def check(name, cond, detail=""):
     else: FAIL += 1; print(f"FAIL  {name}  {detail}")
 
 
+# --- panel_median: holes (zeroed traces) are below-detection LOWS, not dropped ---
+_M = np.array([[1000.0] * 20 for _ in range(6)])
+_M[0][0] = 300.0                       # a dim detected point -> floor ~300
+for _r in range(5):                    # zero-air window t=8..11: 5 of 6 traces zero out
+    for _t in range(8, 12):
+        _M[_r][_t] = np.nan
+_pm = CL.panel_median(_M)
+check("panel_median DIPS during a zeroing window (holes counted as floor)",
+      _pm[9] < 400 and _pm[2] == 1000, (_pm[9], _pm[2]))
+check("panel_median != nanmedian (which would survivorship-bias up to 1000)",
+      abs(_pm[9] - np.nanmedian(_M, axis=0)[9]) > 500)
+
+
 # --- two anti-phase families: signed distance must keep them apart -----------
 n = 40
 t = np.linspace(0, 1, n)

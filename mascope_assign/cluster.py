@@ -58,6 +58,19 @@ def smooth(y, w=5):
     return np.convolve(f, np.ones(w) / w, mode="same") if len(f) >= w else f
 
 
+def panel_median(M):
+    """Median of raw-cps member traces for a cluster panel. The per-trace NaN holes
+    are 'below-detection' LOWS (the peak dropped under the bin floor, e.g. during a
+    zero-air event), NOT missing-at-random -- so fill them to the cluster's detection
+    floor (lowest detected value) and take a PLAIN median. np.nanmedian would DROP the
+    holes and median only the surviving bright traces -> survivorship bias -> the bold
+    line wrongly stays flat/rises through a zeroing event instead of dipping with it."""
+    Mr = np.asarray(M, dtype=float)
+    pos = Mr[np.isfinite(Mr) & (Mr > 0)]
+    floor = float(np.min(pos)) if pos.size else 1.0
+    return np.median(np.where(np.isfinite(Mr), Mr, floor), axis=0)
+
+
 def shape_of(mean_z, gap=0.5):
     s, e = np.nanmean(mean_z[:6]), np.nanmean(mean_z[-6:])
     return "rise" if e - s > gap else ("fall" if s - e > gap else "peak")
@@ -400,7 +413,7 @@ def render_a4(rows, grid, traces_z, traces_raw, item_label, out_prefix, *,
                 ax.plot(grid, yy, color=col, lw=0.8, alpha=al); M.append(yy)
             with np.errstate(all="ignore"):
                 med = smooth(np.nanmean(np.array(M), axis=0)) if mode == "z" \
-                    else np.nanmedian(np.array(M), axis=0)
+                    else panel_median(M)
             ax.plot(grid, med, color="#111", lw=2.2, alpha=0.9, zorder=5)
             if mode == "z":
                 ax.set_ylim(-3.3, 2.7); ax.set_ylabel("z", fontsize=9)
@@ -656,7 +669,7 @@ def render_flat_panel(cols, traces_raw, grid, out, item_label, *,
         M.append(yy)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)   # all-NaN time bins are fine
-        med = np.nanmedian(np.array(M), axis=0)
+        med = panel_median(M)
     ax.plot(grid, med, color="#111", lw=2.2, alpha=0.9, zorder=5, label="median")
     ax.set_yscale("log"); ax.set_xlim(0, float(grid[-1]))
     if ylim:
