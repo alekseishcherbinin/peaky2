@@ -287,6 +287,10 @@ def run(sample_id: str, context: str = "ambient-air", *,
     # high degeneracy_density with no isotope / cross-channel / series
     # corroboration is capped at Candidate.
     tiers.apply_tiers(led)
+    # F-monster de-risking runs AFTER the tier engine (which would otherwise
+    # re-promote it): demote unconfirmed-fluorine M0 (¹⁹F monoisotopic, no Cl/Br/S
+    # anchor, not a PFCA) to Candidate + below_assignability. Last word on tier.
+    cleanup.demote_unconfirmed_fluorine(led, log=log)
     tc = led.loc[led["role"] == ledger.ROLE_M0, "tier"].value_counts().to_dict()
     log(f"[run] tiers {tc}")
 

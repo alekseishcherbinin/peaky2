@@ -415,7 +415,9 @@ def demote_unconfirmed_fluorine(ledger: pd.DataFrame, *, f_min: int = F_DEMOTE_M
     below_assignability. Real PFCAs and isotope-anchored F species are kept."""
     n = 0
     has_ba = "below_assignability" in ledger.columns
-    for i in ledger.index[ledger["role"] == L.ROLE_M0]:
+    target = (ledger.index[ledger["role"] == L.ROLE_M0]
+              if "role" in ledger.columns else ledger.index)   # merged ledger has no role col
+    for i in target:
         cnt = C.parse_formula(str(ledger.at[i, "neutral_formula"] or ""))
         if cnt.get("F", 0) < f_min:
             continue
@@ -441,11 +443,12 @@ def run_cleanup(client, sample_id, ledger, profile, cfg, *, log=print) -> dict:
     clu = label_bromide_clusters(ledger, client, sample_id, log=log)
     art = flag_ringing_artifacts(ledger, log=log)
     sat = reclaim_satellites(ledger, log=log)
-    fdm = demote_unconfirmed_fluorine(ledger, log=log)
+    # NB: demote_unconfirmed_fluorine is NOT called here -- it must run AFTER
+    # tiers.apply_tiers (which recomputes tier and would re-promote the F-monster).
+    # assign.run calls it post-tiering.
     return {"recovered": rec["recovered"], "clusters": clu["labelled"],
             "cluster_covalent_ties": clu.get("covalent_ties", 0),
-            "artifacts": art["flagged"], "reclaimed_satellites": sat["reclaimed"],
-            "f_demoted": fdm["f_demoted"]}
+            "artifacts": art["flagged"], "reclaimed_satellites": sat["reclaimed"]}
 
 
 def prefer_amine_over_ammonium(ledger: pd.DataFrame, *, ts_peaks=None, r_min: float = 0.7,
