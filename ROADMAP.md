@@ -49,9 +49,8 @@ isotope twin). Commits Identified (method `known:chlorinated_paraffin`), confide
 Live-verified on <sample>: +5 recovered (C14H26Cl4, C12H21Cl5, C10H16Cl6, C13H23Cl5, C10H15Cl7;
 ±0.6 ppm, 2–5 sats); C14H26Cl4 & C10H15Cl7 were absent from the prior merged ledger.
 test_passes +6 (recover / no-peak-no-fabricate / single-satellite-refuse / F-family-excluded);
-suite green. **TODO:** re-run `mascope-assign batch --reagent NO3_15N` to fold recoveries into a
-fresh merged ledger + report; a manual analyst force-list was deferred (auto-recovery covers the
-real cases). NOT yet committed.
+suite green. A manual analyst force-list was deferred (auto-recovery covers the real cases).
+COMMITTED in **ed2001a** (with the two audit fixes + cutoff below).
 
 ### AUDIT OVER-CLEARING — identified peaks wrongly dumped to unexplained (2026-06-21, follow-up 2)
 User: "isotopologues that weren't assigned even though they were identified ended in unexplained."
@@ -70,12 +69,26 @@ TWO over-aggressive audit clears (both in `passes.audit_isotopes` / `demote_carb
      noise floor → ratio reads ~half the carbons → false clear. FIX: clamp ONLY when the ¹³C
      satellite is `>= cfg.height_cutoff` (reliably measured); the over-claim O-monster always has a
      BRIGHT ¹³C, so it still fires (C19-vs-C11 test preserved).
-Impact (<sample> full pipeline): M0 **350→577**, unexplained signal **−16%**, `[15N]` leak
-**15,805→8,087 (−49%)**, M0 signal fraction ~57%→**70%**. test_passes +2 (non-Br doublet not
-cleared; sub-floor ¹³C clamp skipped); suite 31 files green. **Residual** `[15N]` (~8k, led by
-C3H4N2O3 @5005cps) is NOT a clearing bug: it's `_context_filter` plausibility (high-N-density small
-formulas) + sub-`height_cutoff` peaks (e.g. C15H26O4 @180cps) — a separate tuning/chemistry call.
-NOT yet committed. Diagnostic checkpoints in ~/mascope-output/_ckpt/ (scratch).
+**Residual** `[15N]` (~8k signal, led by C3H4N2O3 @5005cps) is NOT a clearing bug: it's
+`_context_filter` plausibility (high-N-density small formulas) + sub-`height_cutoff` peaks (e.g.
+C15H26O4 @180cps). User reviewed: C3H4N2O3 is plausible, LEFT AS-IS (no plausibility-filter change).
+
+**`height_cutoff` default 500→100** (PassConfig + assign.py CLI): the `mascope-assign` batch CLI
+already defaulted to 100, so per-sample `assign.run()` defaults (used in tests/dev) now match the
+batch. Clean per-sample fix impact (<sample>, cutoff=100, same path): M0 **1009→1119**, unexplained
+**521→391**, unexplained signal **23%→18%** — consistent with the bug fixes, NOT over-commit.
+
+test_passes +8 total (CP recover/no-fabricate/single-sat/F-excluded; non-Br doublet kept; sub-floor
+clamp skipped); suite 31 files green. **COMMITTED ed2001a.** NOT pushed.
+
+**REPORT RE-RUN (batch, ed2001a, --ts reused):** `~/mascope-output/peaky/2026-06-03-Nitrate-...-
+128-600-...190107Z/`. Merged batch: assigned M0 **623→1375** (Identified 372→**645**, Candidate
+251→730), unassigned peaks **1461→684 (−53%)**. Big jump = the Br-doublet bug fired on all 6 files
+(no Br reagent) so recovery compounds across files+merge. NB the large Candidate share is honestly
+low-confidence (incl. ~314 F-containing mass-coincidences flagged `below_assignability`); the
+Identified gain (+273) is the meaningful-confidence improvement. The `reclaim_envelope_tails`
+session-5 "no-op on real data" bug is now moot for this batch (the leak was the two audit clears,
+not deep halogen tails). Diagnostic scratch was in ~/mascope-output/_ckpt/ (cleaned).
 
 
 **SESSION 4 — SHAREABILITY REFACTOR (2026-06-20). Goal: a small group `pip install`s + validates on
