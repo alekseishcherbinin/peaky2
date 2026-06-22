@@ -1,11 +1,11 @@
-"""Console entry point for `mascope-assign`.
+"""Console entry point for `peaky` (alias: `mascope-assign`).
 
 Subcommands:
   list     discover data on the server (datasets / batches / samples)
   assign   single-sample multi-pass assignment -> ledger/xlsx/md/json/gka.html
   gka      build the interactive rotating-GKA HTML from a ledger CSV (offline)
 
-Run `mascope-assign <cmd> --help` for each. Heavy work runs on the host Python
+Run `peaky <cmd> --help` for each. Heavy work runs on the host Python
 (this package + mascope-sdk). A Mascope account/token is read from ~/.mascope/.env
 (or --env / $MASCOPE_ENV / the process environment).
 """
@@ -50,7 +50,7 @@ def _friendly_server_error(e: Exception) -> str | None:
     if "no peaks" in s or "no samples" in s or "no batches" in s or "404" in s \
             or "not found" in s:
         return ("Not found on the server. IDs can go stale when a server copy is "
-                "renamed — re-fetch fresh names/ids with `mascope-assign list`.")
+                "renamed — re-fetch fresh names/ids with `peaky list`.")
     return None
 
 
@@ -85,7 +85,7 @@ def cmd_list(args) -> None:
     elif args.what == "batches":
         if not args.dataset:
             sys.exit("`list batches` needs --dataset NAME "
-                     "(see `mascope-assign list datasets`)")
+                     "(see `peaky list datasets`)")
         bs = IO.list_batches(client, args.dataset)
         cols = [c for c in ("sample_batch_name", "polarity", "status") if c in bs.columns]
         print(f"{len(bs)} batches in {args.dataset!r}:")
@@ -238,8 +238,8 @@ def cmd_gka(args) -> None:
 # --------------------------------------------------------------------------- #
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
-        prog="mascope-assign",
-        description="Multi-pass chemical-formula assignment for Mascope peaks.")
+        prog="peaky",
+        description="Peaky — reproducible multi-pass formula assignment for Mascope peaks.")
     ap.add_argument("--env", default=None,
                     help="path to a Mascope .env (else ~/.mascope/.env or $MASCOPE_ENV)")
     sub = ap.add_subparsers(dest="cmd", required=True)

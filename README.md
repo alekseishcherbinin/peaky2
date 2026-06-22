@@ -1,95 +1,140 @@
-# mascope-peak-assign — developer / iteration guide
+# Peaky
 
-> **Validating this on your own Mascope data? Start with [QUICKSTART.md](QUICKSTART.md).**
+**AI-native analysis toolbox for Mascope.** Describe what you want in plain
+language and get reproducible peak assignments, figures, and reports from
+high-resolution CIMS mass-spec data — without writing notebook code.
 
-From-scratch, test-driven successor to `mascope-formula-assignment`. This dir is
-the canonical home: edit here, run tests here, ship here. (An earlier scratch
-copy may still exist at `~/mascope-assign` — ignore/delete it; this is the one.)
-
-## Layout
+Peaky sits on top of **Mascope** (the data platform / database) and turns
+post-processing into a conversation: you ask, [Claude Code](https://claude.com/claude-code)
+drives Peaky's deterministic pipeline, and the numbers come out the same every time.
 
 ```
-mascope-peak-assign/
-  SKILL.md            invocable manifest + full usage (read this first)
-  ROADMAP.md          the agreed next-step quality work (calibration, carbon clamp, ...)
-  README.md           this file
-  mascope_assign/     the package (see SKILL.md module map) — single-sample assign
-                      + the batch pipeline: sampling / assign_batch / cluster /
-                      analyte_viz (full VK) / pdf_report
-  tests/              one test_<module>.py per module (26 files) + fixtures/match_tree.json
-  scripts/
-    run_assignment.py one-shot: pipeline -> csv/xlsx/md/json/html
-    gka_widget.py     standalone interactive rotating-GKA from a ledger CSV
+Mascope   →  data platform   (the app + database; system of record)
+Peaky     →  analysis layer   (this toolbox; assignment, clustering, reports)
+Claude    →  the interface    (you drive Peaky by asking in plain language)
 ```
 
-For a whole batch (5 time-spaced + max-TIC samples merged → clustering → PDF
-report), see the "Representative-sample batch pipeline" section of SKILL.md and the
-reference drivers in `~/mascope-output/orange-assign/` (run_orange / run_clusters /
-run_vankrevelen / run_report).
+## What it does
 
-## Install & run
+- **Chemical-formula assignment** — multi-pass, isotope-pattern-aware peak → formula
+  annotation. Produces a tiered Excel (Identified / Candidate / below-assignability)
+  with commentary, close alternatives, per-isotopologue scores, and a peak-ownership
+  audit, plus an interactive rotating-GKA widget.
+- **Batch pipeline** — assigns a representative subset (5 time-spaced + max-TIC
+  samples), merges them, then builds time-series correlation clusters, a full
+  Van Krevelen, and an iterable PDF report.
+- **Reagent-aware** — bromide (Br⁻), urea/uronium (Ur⁺), and nitrate (¹⁴N / ¹⁵N)
+  CIMS reagents are built in; add your own with a small JSON/TOML file, no code changes.
+- **Reproducible by construction** — same inputs → same bytes out (determinism tests,
+  byte-stable workbooks/reports), so any figure or assignment can be regenerated exactly.
+
+## What it is (and isn't)
+
+Peaky is a deterministic Python toolbox with two faces:
+
+- a **natural-language interface** — installed as a Claude Code skill, you drive it by asking; and
+- a **CLI** (`peaky`) for scripted / headless runs.
+
+Mascope's `match_compounds` is the only scorer, and the chemistry gates (integer
+DBE, Senior, O-cap, evidence-gated heteroatoms/halogens) are structural. **No LLM is
+in the assignment loop** — the AI orchestrates, it never does the chemistry — which is
+why results are reproducible and auditable. It is not an autonomous agent; you stay
+in the loop and it asks when a choice (reagent, cutoff) actually matters.
+
+## Install
+
+Needs Python ≥ 3.11. Everything (including `mascope-sdk`) installs from public PyPI —
+no private index, and **no Mascope account is needed just to install or to run the
+offline tests.**
 
 ```bash
-pip install -e .                   # pulls mascope-sdk + deps; registers `mascope-assign`
-cp .env.example ~/.mascope/.env    # then fill in MASCOPE_URL + MASCOPE_ACCESS_TOKEN
+git clone https://github.com/alekseishcherbinin/peaky.git
+cd peaky
+python3 -m pip install -e .          # registers the `peaky` command (and `mascope-assign` alias)
+```
 
-mascope-assign list datasets                              # discover your data
-mascope-assign list batches  --dataset "<workspace>"
-mascope-assign list samples  --batch "<batch>" --dataset "<workspace>"
-mascope-assign assign --sample-id <ID> --reagent Br \
+Confirm with the no-network smoke test (≈2 s):
+
+```bash
+python3 tests/test_smoke.py          # "50 passed" => imports + deps OK
+```
+
+### Credentials
+
+Copy the template and fill in your Mascope server URL + API token (from the Mascope
+web app's account / API settings). A project-local `.env` is git-ignored and found
+automatically:
+
+```bash
+cp .env.example .env                 # then edit: MASCOPE_URL=...   MASCOPE_ACCESS_TOKEN=...
+```
+
+Prefer a shared location? Use `~/.mascope/.env` instead, or just `export MASCOPE_URL=…
+MASCOPE_ACCESS_TOKEN=…`. Search order: `--env` / `$MASCOPE_ENV` > repo-root `.env`
+(or cwd) > `~/.mascope/.env`.
+
+## Run it with Claude Code (natural language)
+
+Peaky ships as a Claude Code **skill**. Install [Claude Code](https://claude.com/claude-code),
+make the clone visible to it, and just ask:
+
+```bash
+mkdir -p ~/.claude/skills
+ln -s "$(pwd)" ~/.claude/skills/peaky      # symlink the clone into your skills dir
+```
+
+Then, in Claude Code, ask in plain language — the skill triggers automatically:
+
+> - "List my Mascope datasets."
+> - "Assign formulas for `<your batch>` with the bromide reagent."
+> - "Run the batch pipeline on `<your batch>` and build the Van Krevelen + PDF report."
+> - "Why are these peaks unassigned?"
+
+Claude reads `SKILL.md`, picks the right reagent and parameters, runs the
+deterministic pipeline locally, and shows you the assignments / figures / report.
+
+## Run it as a CLI (scripted)
+
+```bash
+peaky list datasets
+peaky list batches  --dataset "<your workspace>"
+peaky list samples  --batch "<your batch>" --dataset "<your workspace>"
+
+# one sample
+peaky assign --sample-id <ID> --reagent <Br|Ur|NO3|NO3_15N|auto> \
     --height-cutoff 100 --output-dir ~/mascope-output/<name>
-```
-`--reagent {auto,Br,Ur,NO3,NO3_15N,…}` forces the analyte channels (a positive/sparse sample
-otherwise mis-detects as negative). Heavy work runs on the host Python; a Mascope
-token is read from `~/.mascope/.env` (or `--env` / `$MASCOPE_ENV`). `~5 min` for a
-~1000-peak sample at cutoff 100. (`python3 scripts/run_assignment.py …` still works
-as a thin forwarder; `python3 -m mascope_assign …` is equivalent to the script.)
 
-## Test loop
+# a whole batch (representative subset -> merge -> clusters -> Van Krevelen -> PDF)
+peaky batch  --batch "<your batch>" --dataset "<your workspace>" \
+    --reagent <Br|Ur|NO3|NO3_15N|auto> --out-dir ~/mascope-output
+```
+
+`--reagent` forces the analyte channels (a positive/sparse sample otherwise
+mis-detects as negative). `mascope-assign` is kept as an alias of `peaky`.
+Step-by-step walkthrough: **[QUICKSTART.md](QUICKSTART.md)**. Reagent depth, the
+module map, and chemistry rules: **[SKILL.md](SKILL.md)**.
+
+## Validation
+
+Peaky is validated end-to-end on the **orange-peeling** CIMS experiment
+(representative-sample assign → merge → clustering → Van Krevelen → PDF report):
+
+- **Orange peeling (Br⁻ CIMS)** — 80 samples / ~96 min → merged **502 M0**
+  (402 Identified / 100 Candidate), ~4× the per-file coverage.
+- **Orange peeling (Ur⁺ CIMS)** — 81 samples / ~97 min → merged **1319 M0**
+  (1065 Identified / 254 Candidate); the positive-mode NH₄→amine co-variation gate
+  is applied at merge.
+
+## Development
+
+One ledger DataFrame (one row per peak; passes only fill/annotate), Mascope is the
+only scorer, chemistry gates are structural. Every change ships with a test, and the
+offline suite (850+ assertions across 31 files, no network) must stay green:
 
 ```bash
-python3 tests/test_smoke.py          # 2s "install OK" check (no creds, no network)
-pytest tests/                        # or: for t in tests/test_*.py; do python3 "$t"; done
+pytest tests/                        # or run any tests/test_*.py as a standalone script
 ```
-850+ offline assertions across 31 files, no network. Live smoke for io_mascope:
-`MASCOPE_LIVE=1 python3 tests/test_io_mascope.py`. **Rule: every code change
-ships with a test; keep the suite green.** Tests use plain asserts and run as
-scripts (exit non-zero on failure); each also exposes a validating `test_all`
-so `pytest tests/` collects and passes them. CI runs the suite with no creds.
 
-## Design invariants (don't regress)
-
-- One ledger DataFrame, one row per peak; passes only fill/annotate. `ledger.py`
-  enforces structural invariants on commit; `ledger.validate()` must return `[]`.
-- Mascope is the only scorer (`io_mascope`). Other modules never call the network.
-- Chemistry gates are structural (integer-DBE-on-neutral, Senior, O-cap,
-  halogens-as-H). See SKILL.md "Chemistry rules".
-- Heteroatoms enter the neutral only with positive evidence; relaxed filtering is
-  "earned by evidence" (chain membership / isotope confirmation), never default.
-
-## Current status (validation set: the orange-peel batches — full history in ROADMAP.md)
-
-The validation set is the **orange-peeling** experiment in *Aleksei's workspace*, run
-end to end through the batch pipeline (representative-sample assign → merge → clustering
-→ Van Krevelen → PDF report):
-
-- **Orange peeling (Br⁻ CIMS)** — 80 samples / ~96 min. 6 representative files
-  (5 time-spaced + max-TIC) → **merged 502 M0 (402 Identified / 100 Candidate)**,
-  ~4× the per-file coverage.
-- **Orange peeling (Ur⁺ CIMS)** — 81 samples / ~97 min. 6 representative files →
-  **merged 1319 M0 (1065 Identified / 254 Candidate)**; the positive-mode NH₄→amine
-  co-variation gate is applied at merge.
-
-Reproduce with `mascope-assign batch --batch "<your batch>" --reagent <Br|Ur|NO3|NO3_15N|auto>`
-(see [QUICKSTART.md](QUICKSTART.md)); regenerate the figures + report offline with
-`mascope-assign report`. The full pipeline (6 passes + audits, the siloxane / composite /
-isotope-envelope / ladder logic, tiering, calibration) and its development history live in
-`ROADMAP.md` and `SKILL.md`.
-
-## Performance notes
-
-- Cost = `match_compounds` ≈ 3.8 s / 200-formula batch; batches run concurrently
-  (`io_mascope.MATCH_WORKERS`). `chemistry._grid_cached` memoises grid
-  enumeration (a missing cache once caused a 60× regression).
-- Per-pass timing is logged by `assign._safe` and stored in the manifest.
-- `cheminfo` is off by default (flaky/slow; grid is the primary enumerator).
+CI runs the suite on Python 3.11–3.13 with no credentials. Design invariants,
+development history, and the full module map live in **[SKILL.md](SKILL.md)** and
+**[ROADMAP.md](ROADMAP.md)**.

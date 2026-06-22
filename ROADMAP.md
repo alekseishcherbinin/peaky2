@@ -1,4 +1,4 @@
-# AGENT PEAKY — RESUME HERE (updated 2026-06-21, session 5)
+# PEAKY — DEV LOG / RESUME HERE (updated 2026-06-21, session 5)
 
 **Project:** consolidate the Mascope pipeline into ONE scalable, shareable Claude Code
 skill ("peaky"): representative-sample assignment → merge → time-series clustering →
@@ -19,8 +19,8 @@ mascope-assign batch --reagent NO3_15N \
   --dataset "<dataset>" --out-dir ~/mascope-output/peaky
 # (add --ts <run>/<tag>_ts.parquet to reuse a cached batch time series and skip the re-fetch)
 ```
-Latest outputs: uronium `~/mascope-output/peaky/2026-06-03-Uronium-...-122-600-...104147Z/`
-(1738 M0, OPEs Identified); ¹⁵NO₃⁻ `...Nitrate-...-128-600-...153517Z/` (623 M0, 13
+Latest outputs: uronium `~/mascope-output/peaky/<uronium-run>/`
+(1738 M0, OPEs Identified); ¹⁵NO₃⁻ `<nitrate-run>/` (623 M0, 13
 chlorinated paraffins Identified). **NEW this session (committed):** `NO3_15N` ¹⁵N
 profile + `flatten_match_tree` ¹⁵N re-anchor; `auto_bin_minutes` now bins at the NATIVE
 sample cadence (was ~29-min/24h, smeared zero-air events); two-sided halogen handling
@@ -81,8 +81,7 @@ batch. Clean per-sample fix impact (<sample>, cutoff=100, same path): M0 **1009�
 test_passes +8 total (CP recover/no-fabricate/single-sat/F-excluded; non-Br doublet kept; sub-floor
 clamp skipped); suite 31 files green. **COMMITTED ed2001a.** NOT pushed.
 
-**REPORT RE-RUN (batch, ed2001a, --ts reused):** `~/mascope-output/peaky/2026-06-03-Nitrate-...-
-128-600-...190107Z/`. Merged batch: assigned M0 **623→1375** (Identified 372→**645**, Candidate
+**REPORT RE-RUN (batch, ed2001a, --ts reused):** `~/mascope-output/peaky/<nitrate-run>/`. Merged batch: assigned M0 **623→1375** (Identified 372→**645**, Candidate
 251→730), unassigned peaks **1461→684 (−53%)**. Big jump = the Br-doublet bug fired on all 6 files
 (no Br reagent) so recovery compounds across files+merge. NB the large Candidate share is honestly
 low-confidence (incl. ~314 F-containing mass-coincidences flagged `below_assignability`); the
@@ -626,7 +625,7 @@ unchanged: sub-400 residual is reagent-bromide lattice + satellites of assigned
 peaks, not missed organics; DBE+isotope narrows a couple of "mass-saturated"
 peaks to a best guess but adds no locked IDs.
 
-### v43->v44: adversarial-review fixes (workflow wf_51c774a8, 12 confirmed-real)
+### v43->v44: adversarial-review fixes (workflow wf_<id>, 12 confirmed-real)
 - **H3** (tiers.py v0.3.0, in pipeline): tier engine consumes `degeneracy_density`;
   uncorroborated mass-degenerate commits capped at Candidate.
 - **H1/H2** (cleanup.recover_isotope_gated): recovery restricted to CHO +
@@ -735,7 +734,7 @@ time-series co-variation.
   verification (constant-DBE, same-adduct, satellite guard, dedicated isotope
   envelope, live score) is MANDATORY before encoding any diagonal as chemistry.
 - **Di-bromide naming campaign on the remaining nBr=2 residual: ZERO new
-  names** (workflow wf_94552dc0). All 14 candidates rejected on adversarial
+  names** (workflow wf_<id>). All 14 candidates rejected on adversarial
   verification — including 424.99=C15H22O4, whose M+2/M+4 are OWNED by a
   confirmed single-Br fluorinated contaminant (C14H12F8O [M+Br]-), so its +HBr
   pairing only proves a SINGLE-Br adduct. The remaining nBr=2 residual is:

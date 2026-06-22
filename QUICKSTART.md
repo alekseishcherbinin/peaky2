@@ -1,4 +1,4 @@
-# Quickstart — assign a Mascope batch on your machine
+# Peaky — Quickstart (assign a Mascope batch on your machine)
 
 A 5-minute path from a fresh clone to a peak-assignment report on **your own**
 Mascope data. For depth see [SKILL.md](SKILL.md); for dev/iteration see
@@ -7,7 +7,7 @@ Mascope data. For depth see [SKILL.md](SKILL.md); for dev/iteration see
 ## 1. Install
 
 ```bash
-git clone <repo-url> mascope-assign && cd mascope-assign
+git clone https://github.com/alekseishcherbinin/peaky.git && cd peaky
 python3 -m pip install -e .          # pulls mascope-sdk + pandas/numpy/scipy/matplotlib/openpyxl
 ```
 Needs Python ≥ 3.11. Everything (incl. `mascope-sdk`) installs from public PyPI —
@@ -38,16 +38,16 @@ You can also `export MASCOPE_URL=… MASCOPE_ACCESS_TOKEN=…`, or pass `--env
 ## 3. Find your data
 
 ```bash
-mascope-assign list datasets
-mascope-assign list batches  --dataset "<your workspace>"
-mascope-assign list samples  --batch "<your batch>" --dataset "<your workspace>"
+peaky list datasets
+peaky list batches  --dataset "<your workspace>"
+peaky list samples  --batch "<your batch>" --dataset "<your workspace>"
 ```
 `list samples` prints each `sample_item_id`, time and TIC — copy an id for step 4.
 
 ## 4. Assign one sample
 
 ```bash
-mascope-assign assign --sample-id <ID> --reagent <Br|Ur|NO3|NO3_15N|auto> \
+peaky assign --sample-id <ID> --reagent <Br|Ur|NO3|NO3_15N|auto> \
     --height-cutoff 100 --output-dir ~/mascope-output/<name>
 ```
 `--reagent` forces the analyte channels (a positive/sparse sample otherwise
@@ -61,7 +61,7 @@ flow assigns a representative subset (5 time-spaced + max-TIC) and merges, then
 builds cluster figures, a Van Krevelen and a PDF report:
 
 ```bash
-mascope-assign batch --batch "<your batch>" --dataset "<your workspace>" \
+peaky batch --batch "<your batch>" --dataset "<your workspace>" \
     --reagent <Br|Ur|NO3|NO3_15N|auto> --out-dir ~/mascope-output
 ```
 Creates a timestamped run folder `~/mascope-output/<batch-slug>_<UTC>/` with the
@@ -71,7 +71,7 @@ A full batch is ≈40 min (mostly the live `match_compounds` calls).
 Regenerate the figures + report later **offline** (no re-assignment) with:
 
 ```bash
-mascope-assign report --run-dir ~/mascope-output/<run-folder> \
+peaky report --run-dir ~/mascope-output/<run-folder> \
     --reagent <Br|Ur|NO3|NO3_15N> --ts ~/mascope-output/<run-folder>/<tag>_ts.parquet
 ```
 
@@ -95,7 +95,7 @@ write a small JSON (or TOML) file and pass `--reagent-config`:
   "detect_adduct": "[M+CH3COO]-", "aliases": ["acetate"]}]
 ```
 ```bash
-mascope-assign batch --batch "<batch>" --reagent Ac --reagent-config myreagents.json ...
+peaky batch --batch "<batch>" --reagent Ac --reagent-config myreagents.json ...
 ```
 
 ## Troubleshooting
@@ -104,7 +104,7 @@ mascope-assign batch --batch "<batch>" --reagent Ac --reagent-config myreagents.
   after a burst of calls. Wait 15–30 min with no traffic (polling extends it).
 - **`401` / token errors** — refresh `MASCOPE_ACCESS_TOKEN` in `~/.mascope/.env`.
 - **sample/batch "not found"** — ids go stale when a server copy is renamed;
-  re-fetch fresh names with `mascope-assign list`.
+  re-fetch fresh names with `peaky list`.
 - **`ModuleNotFoundError`** — re-run `pip install -e .` (or `pip install -r requirements.txt`).
 
 The CLI catches these at the boundary and prints an actionable hint rather than a

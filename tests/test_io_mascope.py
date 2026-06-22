@@ -112,7 +112,7 @@ class _LP:
     def load_peaks(self, *, dataset, batches):
         _LP.seen = batches
         return pd.DataFrame({"mz": [100.0], "height": [1.0], "sample_item_id": ["s"]})
-_name = "<nitrate-batch>"
+_name = "^Nitrate (synthetic) m/z 100-200"
 IO.fetch_batch_peaks(_LP(), "DS", _name)
 check("fetch_batch_peaks escapes the ^ regex anchor in the batch name",
       _LP.seen == IO.escape_batch(_name) and r"\^" in _LP.seen, _LP.seen)

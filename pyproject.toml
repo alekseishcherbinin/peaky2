@@ -3,13 +3,13 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "mascope-assign"
+name = "peaky"
 version = "0.3.0"
-description = "Multi-pass chemical-formula assignment for high-resolution mass-spec peaks (Mascope / Karsa CIMS)."
+description = "Peaky — AI-native analysis toolbox for Mascope: reproducible CIMS peak assignment, clustering, and reporting."
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Aleksei Scherbinin" }]
-keywords = ["mass-spectrometry", "CIMS", "peak-assignment", "van-krevelen", "mascope", "kendrick"]
+keywords = ["peaky", "mass-spectrometry", "CIMS", "peak-assignment", "van-krevelen", "mascope", "kendrick"]
 
 # Runtime dependencies. mascope-sdk is the live Mascope/Karsa connector (public
 # PyPI, MIT); `pip install` pulls/updates it like any other dep. It is imported
@@ -29,13 +29,17 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
-# `pip install mascope-assign[compress]` enables the size-reduced companion PDF
+# `pip install peaky[compress]` enables the size-reduced companion PDF
 # (pdf_report.compress_pdf). Absent these, the report still builds; only the
 # `_compressed.pdf` is skipped.
 compress = ["PyMuPDF>=1.23", "Pillow>=9.0"]
 
+[project.urls]
+Repository = "https://github.com/alekseishcherbinin/peaky"
+
 [project.scripts]
-mascope-assign = "mascope_assign.cli:main"
+peaky = "mascope_assign.cli:main"
+mascope-assign = "mascope_assign.cli:main"   # back-compat alias
 
 [tool.hatch.build.targets.wheel]
 packages = ["mascope_assign"]
