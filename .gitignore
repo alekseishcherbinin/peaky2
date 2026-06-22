@@ -9,3 +9,14 @@ __pycache__/
 *.npy
 *.log
 .DS_Store
+
+# local agent settings
+.claude/
+
+# generated run outputs
+checkpoints/
+*_assignments.xlsx
+*_ledger.csv
+*_gka.html
+*_manifest.json
+*_summary.md

@@ -37,7 +37,7 @@ Division of labor is the core design decision:
   and the attributed `sample_peak_id`. We never invent a match score; we hand it
   candidate neutral formulas and read its per-isotopologue verdict.
 - **We own candidate generation, chemistry plausibility, series logic, and
-  arbitration** — i.e. *which* formulas are worth asking about and *which*
+  arbitration** — i.e. _which_ formulas are worth asking about and _which_
   answer wins each peak.
 
 State lives in one mutable **ledger DataFrame** (one row per physical peak).
@@ -62,6 +62,7 @@ mascope-assign list samples --batch "<batch>" --dataset "<workspace>"
 mascope-assign assign --sample-id <ID> --reagent <Br|Ur|NO3|NO3_15N|auto> \
     --height-cutoff 100 --output-dir ~/mascope-output/<name>
 ```
+
 (`python3 -m mascope_assign assign …` and the legacy `scripts/run_assignment.py`
 forwarder are equivalent.)
 
@@ -70,6 +71,7 @@ gka.html}` plus per-pass ledger checkpoints. Full run on a ~1000-peak Br-CIMS
 sample is ~5 min (cutoff 100).
 
 ### Contexts
+
 `ambient-air` (= atmospheric), `chamber`, `indoor-air`, `object-headspace`,
 `combustion`, `water`, `food`, **`uronium`** (= positive urea-CIMS), `none`.
 Context sets plausibility bounds + which Pass-3 contaminant families are eligible,
@@ -77,8 +79,10 @@ and carries `polarity` + grid-box width. Reagent adducts are NOT set by context 
 they are **detected from the sample** (`ionization_mechanism` column).
 
 ### Polarity (negative Br-CIMS vs positive urea-CIMS)
+
 The pipeline was built negative-mode Br-specialized; positive-mode support
 (2026-06-16) is reagent/polarity-driven, detected from the adducts:
+
 - **`uronium` context** (positive urea-CIMS): N-heavy VK priors, wider C46/O32
   grid, channels `[M+H]+` / `[M+(CH4N2O)H]+` (urea adduct, +61.0396) + opportunistic
   `[M+Na]+`/`[M+NH4]+`; urea `[urea_n+H]+` reagent-cluster library.
@@ -94,6 +98,7 @@ The pipeline was built negative-mode Br-specialized; positive-mode support
   dropped; same ¹⁵N-modeling also depresses the aggregate score of ¹⁵N poly-halogens).
 
 ### Halogen / heteroatom policy (two-sided)
+
 **Isotope-confirmable (Cl/Br/S) → open + tier on the envelope; monoisotopic (F/P) →
 off the grid except specific known families.** Negative pass-0 known-species now
 include: **PFCAs** `CnHF(2n-1)O2` (TFA…PFOA, exact-mass committed — F is off the
@@ -104,6 +109,7 @@ positive pass-0 adds **organophosphates** (TEP/TBP/TPPO…, cross-channel-gated 
 P is monoisotopic). `cleanup.demote_unconfirmed_fluorine` (run **after**
 `apply_tiers`) demotes F≥4 M0 that are not a PFCA and lack a Cl/Br/S anchor —
 ¹⁹F mass-coincidence "monsters" → Candidate + `below_assignability`.
+
 - **Mass offset ("be aware of the −X ppm"):** the reported `ppm_error` stays RAW,
   but every quality gate is offset-aware. `io_mascope.estimate_offset` seeds a
   rough offset (`cfg.prior_offset`) for the pre-calibration pass-0 gate; pass-1
@@ -114,6 +120,7 @@ P is monoisotopic). `cleanup.demote_unconfirmed_fluorine` (run **after**
   off-trend mass-coincidences win then z-reject (peak left unexplained).
 
 ### Key flags
+
 `--ppm` (m/z trust, default 1.0) · `--search-ppm` (enumeration tol, 5.0) ·
 `--height-cutoff` (cps, 100) · `--no-pass2/3/4` · `--no-cache`.
 
@@ -129,14 +136,15 @@ pipeline assigns a **representative subset and merges by m/z**:
 - **`assign_batch.run(batch=NAME | peaks=, reagent='auto', out_dir=, ts_peaks=, amine_r_min=0.7)`**
   — resolves the `profiles.ReagentProfile`, runs `assign.run` per selected file
   (keeps each `per_file/<sid>_ledger.csv`), then an **offset-aware merge** (`align`)
-  + a file-to-file **jitter** table. Pass `ts_peaks` (the full-batch per-peak time
-  series) to enable the positive-mode NH4→amine gate below. Writes `merged_ledger.csv`,
-  `jitter*.csv`, `batch_summary.json`.
+  - a file-to-file **jitter** table. Pass `ts_peaks` (the full-batch per-peak time
+    series) to enable the positive-mode NH4→amine gate below. Writes `merged_ledger.csv`,
+    `jitter*.csv`, `batch_summary.json`.
 - IDs must be fetched FRESH from the live server (`io_mascope.fetch_batch_samples`,
   regex-escape the batch name) — cached `sample_item_id`s 404 when a server copy is
   renamed.
 
 ### Reagent-aware chemistry
+
 `assign.run(..., adducts=)` forces a known reagent's channels (a sparse-match positive
 file otherwise falls back to `[M-H]-` = wrong polarity). For positive urea-CIMS,
 **`cleanup.prefer_amine_over_ammonium(ledger, ts_peaks=, r_min=0.7)`** re-reads
@@ -145,11 +153,12 @@ file otherwise falls back to `[M-H]-` = wrong polarity). For positive urea-CIMS,
 `assign_batch` at the merged level, where corroboration is complete.)
 
 ### Time-series clustering + figures + report
+
 - **`cluster.py`** — TIC/reagent-normalised log-correlation, COMPLETE linkage at r>0.6
   (signed distance keeps anti-phase apart) → `render_a4` A4-portrait paginated panel
   figures (all clusters + a "remaining peaks" overview, panel legend = `formula
-  (ion-channels / isotope-peaks / match-score)`). **Flatness gate:** `split_varying(traces,
-  cols, cv_min=FLAT_CV)` pulls flat traces (cv<0.30, no reliable shape) OUT of clustering and
+(ion-channels / isotope-peaks / match-score)`). **Flatness gate:** `split_varying(traces,
+cols, cv_min=FLAT_CV)` pulls flat traces (cv<0.30, no reliable shape) OUT of clustering and
   `render_flat_panel` bunches them into ONE overview (so flat noise doesn't shatter into spurious
   n3-4 clusters). `FLAT_CV` knob — now serves only the UNASSIGNED path. **Per-ion:** assigned analytes
   cluster PER ION CHANNEL (formula+adduct), not the per-neutral sum (`analyte_viz.ion_traces`), because
@@ -170,7 +179,7 @@ file otherwise falls back to `[M-H]-` = wrong polarity). For positive urea-CIMS,
   backbone (Si/F/halogen folded into the backbone, not split out).
 - **`pdf_report.build(out_dir, tag=, label=, ts_path=, batch_name=, run_id=, generated=)`** — the
   STANDARD iterable PDF report (uniform A4 portrait). Structure = `SECTIONS = [cover, findings, coverage,
-  composition, scrutiny, gka, families, changers, clusters, methods]`, each a `section(ctx, pdf)` fn over
+composition, scrutiny, gka, families, changers, clusters, methods]`, each a `section(ctx, pdf)` fn over
   a context loaded once by `load_context`. To change the report, edit/reorder a section — nothing else
   couples. Section highlights:
   - `findings` (page 2): event-TIC of the FULL batch (total signal vs wall-clock, rep samples ticked) +
@@ -183,12 +192,12 @@ file otherwise falls back to `[M-H]-` = wrong polarity). For positive urea-CIMS,
   - `scrutiny` (`plausibility.py`): flags Candidate-tier mass-coincidence formulas (high heteroatom /
     very low H/C / wrong-mode halogen); Identified never flagged; renders only if something is flagged.
   - The `gka` section renders `gka_figure.render_gka` on demand from the merged ledger.
-  The cover stamps `run_id` (Report ID) + a date+TIME `generated` line; the PDF FILENAME embeds the
-  Report ID (`report_<run_id>.pdf`). Cover formula-disagreements read from the merged ledger's own
-  `formula_agree` (authoritative). **Reproducible bytes:** figures/PDF/CSV are a deterministic fn of
-  inputs + run-time — the xlsx + matplotlib metadata stamp the run time via `SOURCE_DATE_EPOCH` (same
-  inputs+time → byte-identical; a later run → a later stamp). The live `match_compounds` step is the only
-  from-scratch non-determinism (server-side).
+    The cover stamps `run_id` (Report ID) + a date+TIME `generated` line; the PDF FILENAME embeds the
+    Report ID (`report_<run_id>.pdf`). Cover formula-disagreements read from the merged ledger's own
+    `formula_agree` (authoritative). **Reproducible bytes:** figures/PDF/CSV are a deterministic fn of
+    inputs + run-time — the xlsx + matplotlib metadata stamp the run time via `SOURCE_DATE_EPOCH` (same
+    inputs+time → byte-identical; a later run → a later stamp). The live `match_compounds` step is the only
+    from-scratch non-determinism (server-side).
 - **Run versioning** — `pipeline.make_run_dir(base, batch_name, when)` / `run_id` / `run_stamp` /
   `slugify`: every set of outputs goes in its own timestamped folder `<batch-slug>_<date>_<time>/`
   (folder name == Report ID). Pass ONE `datetime.now()` per run so folder, id and cover agree.
@@ -211,22 +220,22 @@ traffic (polling extends it); `deferred_rerun.py` waits it out.
 
 ## The pipeline
 
-| pass | what it does |
-|---|---|
-| Pre | detect reagent adducts from the sample; prescan isotope fingerprint; **label reagent-ion clusters** (Brₙ, Brₙ·neutral, BrO/BrO₂/BrO₃ with **both ⁷⁹/⁸¹Br isotopologues**) so they are never assignment candidates — each is **recorded with its `ion_formula`** (known formula = assigned, whatever the class) |
-| 1 | lock the high-confidence **CHO/CHON backbone**: grid-enumerate, score with `match_compounds`, arbitrate (complexity-penalised, isotopologue-gated), commit M0 owners + attach Mascope's isotopologue children, lock High peaks |
-| 2 | **iterative GKA series** expansion from locked anchors (CH₂/O/H₂O/CO/CO₂/C₂H₂O + siloxane/CF₂), chaining confirmed members as new anchors |
-| 3 | **automatic series detection** (the machine "rotating plot") opens contaminant families on decoy-controlled evidence; HBr-cluster ladder; organosulfate/nitrate/siloxane/amine + iso-gated bromo/chloro-organics |
-| 4 | **residual explainer**: isotope-pair resolution of ~1.998-Da doublets + deep 2-step series; DBE-only plausibility; ppm-disciplined acceptance |
-| 5 | **known-neutral completion**: cross-channel partners + series gaps of passes 1–4 (no new formula space) |
-| 6 | **anchored ladder gap-fill** (`ladders.py`): walk homolog/oxidation diagonals (+O/+CH₂/+CO₂/−H₂O, constant-DBE for carbon growth) out from Identified anchors, satellite-guarded, Candidate tier |
-| iso-env | **isotope-envelope completion** (`complete_isotope_envelopes`, before pass 4 + post-audit): claim every committed peak's full predicted M+2/M+4 envelope (Si/Br/Cl combos), attaching unexplained satellites and **displacing weak M0s that are really a parent's satellite** — kills the ~44% of "residual" peaks that are isotope lines (the silanediol M+2 mis-read as a Cl-F-S organic) |
-| composite | **composite detection** (`detect_composites`, post-audit, **halogen-adduct-gated**): the M+1 region (¹³C/²⁹Si) is halogen-free so it scales only with the assigned compound; if observed M0 exceeds the M+1-implied intensity, an unresolved co-eluting compound shares the m/z. Flags (does not demote) + reads the co-component's halogen content off the even-shift residual. Skipped in positive/no-halogen mode (the even-shift residual is then ordinary isotope structure) |
-| siloxane | **PDMS/siloxane-ladder assignment** (`siloxane.py`, late + locked): the +C₂H₆OSi (74.0188) silicone oligomer ladder is mass-degenerate per peak (CHON O-monsters out-score the true Si formula at the offset), so a dedicated pass claims it on the **ladder spacing + the ²⁹Si/³⁰Si isotope envelope**, displacing UNLOCKED monsters, Candidate tier — bypassing the CHON-centric heuristics. Inert where the context forbids Si |
-| iso-env (3rd) | **post-pass-6 envelope sweep**: the di-bromide `[M+HBr+Br]⁻` SOA cores commit in pass 6, too late for the earlier two sweeps — this claims their M+2/M+4 satellites |
-| cleanup | **residual cleanup** (`cleanup.py`, post-pass-6): (1) **isotope-confirmed recovery** — commit CHO + isotope-confirmed covalent-halogen molecules the score gate dropped; (2) **bromide-cluster labelling** with a covalent-fit oracle check ("reagent-adduct preferred over degenerate di-bromo organic"); (3) **ringing/sidelobe artifact flagging** — weak peaks within ~10 mDa of a ≥50k-cps, ≥100× ion → `ROLE_ARTIFACT` (not unexplained) |
-| degeneracy | **honest cross-family degeneracy** (`degeneracy.apply_degeneracy`, before tiers): re-count distinct plausible IONS in the calibrated window across ALL families; stamps `degeneracy_density` + note (unique / mass-degenerate+tie-set / MASS-SATURATED). The tier engine consumes this — an uncorroborated mass-degenerate commit is capped at Candidate |
-| audits | 13C carbon-clamp (pre-pass-4 + post), Br-doublet repair, calibrated mass gate |
+| pass          | what it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pre           | detect reagent adducts from the sample; prescan isotope fingerprint; **label reagent-ion clusters** (Brₙ, Brₙ·neutral, BrO/BrO₂/BrO₃ with **both ⁷⁹/⁸¹Br isotopologues**) so they are never assignment candidates — each is **recorded with its `ion_formula`** (known formula = assigned, whatever the class)                                                                                                                                                                    |
+| 1             | lock the high-confidence **CHO/CHON backbone**: grid-enumerate, score with `match_compounds`, arbitrate (complexity-penalised, isotopologue-gated), commit M0 owners + attach Mascope's isotopologue children, lock High peaks                                                                                                                                                                                                                                                    |
+| 2             | **iterative GKA series** expansion from locked anchors (CH₂/O/H₂O/CO/CO₂/C₂H₂O + siloxane/CF₂), chaining confirmed members as new anchors                                                                                                                                                                                                                                                                                                                                         |
+| 3             | **automatic series detection** (the machine "rotating plot") opens contaminant families on decoy-controlled evidence; HBr-cluster ladder; organosulfate/nitrate/siloxane/amine + iso-gated bromo/chloro-organics                                                                                                                                                                                                                                                                  |
+| 4             | **residual explainer**: isotope-pair resolution of ~1.998-Da doublets + deep 2-step series; DBE-only plausibility; ppm-disciplined acceptance                                                                                                                                                                                                                                                                                                                                     |
+| 5             | **known-neutral completion**: cross-channel partners + series gaps of passes 1–4 (no new formula space)                                                                                                                                                                                                                                                                                                                                                                           |
+| 6             | **anchored ladder gap-fill** (`ladders.py`): walk homolog/oxidation diagonals (+O/+CH₂/+CO₂/−H₂O, constant-DBE for carbon growth) out from Identified anchors, satellite-guarded, Candidate tier                                                                                                                                                                                                                                                                                  |
+| iso-env       | **isotope-envelope completion** (`complete_isotope_envelopes`, before pass 4 + post-audit): claim every committed peak's full predicted M+2/M+4 envelope (Si/Br/Cl combos), attaching unexplained satellites and **displacing weak M0s that are really a parent's satellite** — kills the ~44% of "residual" peaks that are isotope lines (the silanediol M+2 mis-read as a Cl-F-S organic)                                                                                       |
+| composite     | **composite detection** (`detect_composites`, post-audit, **halogen-adduct-gated**): the M+1 region (¹³C/²⁹Si) is halogen-free so it scales only with the assigned compound; if observed M0 exceeds the M+1-implied intensity, an unresolved co-eluting compound shares the m/z. Flags (does not demote) + reads the co-component's halogen content off the even-shift residual. Skipped in positive/no-halogen mode (the even-shift residual is then ordinary isotope structure) |
+| siloxane      | **PDMS/siloxane-ladder assignment** (`siloxane.py`, late + locked): the +C₂H₆OSi (74.0188) silicone oligomer ladder is mass-degenerate per peak (CHON O-monsters out-score the true Si formula at the offset), so a dedicated pass claims it on the **ladder spacing + the ²⁹Si/³⁰Si isotope envelope**, displacing UNLOCKED monsters, Candidate tier — bypassing the CHON-centric heuristics. Inert where the context forbids Si                                                 |
+| iso-env (3rd) | **post-pass-6 envelope sweep**: the di-bromide `[M+HBr+Br]⁻` SOA cores commit in pass 6, too late for the earlier two sweeps — this claims their M+2/M+4 satellites                                                                                                                                                                                                                                                                                                               |
+| cleanup       | **residual cleanup** (`cleanup.py`, post-pass-6): (1) **isotope-confirmed recovery** — commit CHO + isotope-confirmed covalent-halogen molecules the score gate dropped; (2) **bromide-cluster labelling** with a covalent-fit oracle check ("reagent-adduct preferred over degenerate di-bromo organic"); (3) **ringing/sidelobe artifact flagging** — weak peaks within ~10 mDa of a ≥50k-cps, ≥100× ion → `ROLE_ARTIFACT` (not unexplained)                                    |
+| degeneracy    | **honest cross-family degeneracy** (`degeneracy.apply_degeneracy`, before tiers): re-count distinct plausible IONS in the calibrated window across ALL families; stamps `degeneracy_density` + note (unique / mass-degenerate+tie-set / MASS-SATURATED). The tier engine consumes this — an uncorroborated mass-degenerate commit is capped at Candidate                                                                                                                          |
+| audits        | 13C carbon-clamp (pre-pass-4 + post), Br-doublet repair, calibrated mass gate                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 ## Chemistry rules (enforced + regression-tested)
 
@@ -245,13 +254,13 @@ traffic (polling extends it); `deferred_rerun.py` waits it out.
 
 ## Outputs
 
-| file | contents |
-|---|---|
-| `_ledger.csv` | every peak: **role** (M0 / iso_child / reagent / **artifact** / unexplained), formula, adduct, scores (incl. arbitration `eff_score`/`eff_margin`/`tied`), ppm, confidence, **tier + tier_reason + candidate_density + degeneracy_density/degeneracy_note**, provenance, commentary, alternatives, isotopologues (reagent rows now carry their `ion_formula`) |
-| `_assignments.xlsx` | Summary · Read me (legend) · **Identified** · **Candidates** (one row per candidate formula) · Unassigned (evidence-characterized) · By class · Unique formulas · Isotopologues · Peak ownership (all peaks) · Target list · Reagent ions — styled: frozen headers, autofilters, number formats, tier/confidence color chips |
-| `_summary.md` | narrative + top assignments + coverage |
-| `_manifest.json` | module versions, prescan, series evidence table, per-pass timing |
-| `_gka.html` | interactive rotating-GKA widget (see below) |
+| file                | contents                                                                                                                                                                                                                                                                                                                                                      |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `_ledger.csv`       | every peak: **role** (M0 / iso_child / reagent / **artifact** / unexplained), formula, adduct, scores (incl. arbitration `eff_score`/`eff_margin`/`tied`), ppm, confidence, **tier + tier_reason + candidate_density + degeneracy_density/degeneracy_note**, provenance, commentary, alternatives, isotopologues (reagent rows now carry their `ion_formula`) |
+| `_assignments.xlsx` | Summary · Read me (legend) · **Identified** · **Candidates** (one row per candidate formula) · Unassigned (evidence-characterized) · By class · Unique formulas · Isotopologues · Peak ownership (all peaks) · Target list · Reagent ions — styled: frozen headers, autofilters, number formats, tier/confidence color chips                                  |
+| `_summary.md`       | narrative + top assignments + coverage                                                                                                                                                                                                                                                                                                                        |
+| `_manifest.json`    | module versions, prescan, series evidence table, per-pass timing                                                                                                                                                                                                                                                                                              |
+| `_gka.html`         | interactive rotating-GKA widget (see below)                                                                                                                                                                                                                                                                                                                   |
 
 ## Interactive rotating-GKA widget
 
@@ -265,44 +274,44 @@ already open. `run_assignment.py` emits one per run.
 
 ## Module map (`mascope_assign/`)
 
-| module | role |
-|---|---|
-| `chemistry.py` | masses (incl. positive adducts: `[M+H]+`/`[M+Na]+`/`[M+NH4]+`/urea), formula algebra, grid (integer-DBE / Senior / O-cap), complexity penalty, grid cache |
-| `contexts.py` | context profiles (incl. positive `uronium` + `polarity`/grid-width fields) + plausibility filter + contaminant families (incl. long-PDMS `pdms`) |
-| `ledger.py` | the peak DataFrame + invariants + commit API |
-| `io_mascope.py` | the ONLY Mascope I/O: peaks, cheminfo, parallel `match_compounds` + per-isotopologue parser, adduct detection, `estimate_offset` (rough pre-calibration) |
-| `isotopes.py` | prescan fingerprint → grid constraints; **`isotope_pattern()`** envelope predictor (per-element convolution) |
-| `series_gka.py` | GKA/Kendrick math, repeat units, propagation |
-| `ladders.py` | pass-6 anchored homolog/oxidation ladder gap-fill |
-| `series_detect.py` | automatic decoy-controlled series detection + chain extraction |
-| `reagents.py` | reagent-cluster library + labeler (Br isotopologues; positive `[urea_n+H]+`; records `ion_formula`) |
-| `passes.py` | arbitration (complexity + **calibration-aware off-trend penalty**) + the pass director + offset-tolerant `calibrate`/`confidence_label`/`relabel_confidence` + polarity-aware pass-0 |
-| `residual.py` | Pass 4 residual explainer |
-| `siloxane.py` | dedicated PDMS/siloxane-ladder assignment (+C₂H₆OSi spacing + ²⁹Si/³⁰Si envelope, late + locked) |
-| `analyte_viz.py` | **consistent** Van Krevelen + raw time-series from a ledger + batch TS (one row per neutral, RAW intensity, changing-cv threshold). **`render_van_krevelen_full`** = EVERY assigned peak by CHO/CHON/CHOS backbone (Si/F/halogen folded in). `attach_dynamics(bin_minutes=)` for short batches. CLIs: `scripts/analyte_plots.py`, `scripts/analyte_widgets.py` (interactive HTML) |
-| `degeneracy.py` | honest cross-family mass-degeneracy measurement (`degeneracy_density`/note) |
-| `cleanup.py` | residual cleanup: isotope-confirmed recovery, bromide-cluster labelling, ringing-artifact flagging, satellite reclaim, **`prefer_amine_over_ammonium`** (positive: re-read uncorroborated/non-co-varying `[M+NH4]+` as the `[M+H]+` amine) |
-| **`sampling.py`** | THE RULE — `select_representative_samples` (5 evenly-time-spaced + max-TIC) for batch assignment |
-| **`assign_batch.py`** | `run(batch\|peaks, ts_peaks=, amine_r_min=)` — assign the reps, keep per-file ledgers, offset-aware merge (`align`) + jitter table; applies the positive amine gate at merge level |
-| **`cluster.py`** | correlation clustering (log-corr, COMPLETE linkage r>0.6, signed distance) → `render_a4` A4-portrait paginated panels + remaining-peaks overview. **Flatness gate** `split_varying`/`render_flat_panel` (cv<`FLAT_CV` bunched, not clustered). `render_changers` = A4-portrait big-standalone-changers page. `write_cluster_workbook(when=)` — byte-reproducible per-cluster XLSX (timestamps stamped from the run time) |
-| **`composition.py`** | report composition accounting (pure): `signal_by_backbone` (intensity-weighted CHO/CHON/CHOS), `amine_shadow_stats`/`collapsed_composition` (the [M+NH4]+/[M+H]+-amine degeneracy two-way), `top_species_by_signal`, `oligomer_flag` (high-C high-O HOM-dimer candidates) |
-| **`plausibility.py`** | chemical-plausibility QC: `scan(merged, polarity)` flags Candidate-only mass-coincidence formulas (high heteroatom / very low H/C / wrong-mode halogen); Identified never flagged (powers the `scrutiny` report section) |
-| **`pdf_report.py`** | STANDARD iterable PDF report (uniform A4) — `build()` over `SECTIONS=[cover, findings, coverage, composition, scrutiny, gka, families, changers, clusters, methods]`, ctx loaded once. PDF filename = `report_<run_id>.pdf` |
-| **`gka_figure.py`** | STATIC GKA findings page: per-family small-multiple Kendrick mass-defect plots (`render_gka`), each rotated to flatten its homologous series into horizontal ladders. a family shows ONLY if it forms a series (`present_families`); contaminants (siloxane/fluorinated) need a short ≥2 ladder, else not plotted. Print counterpart of `scripts/gka_widget.py` |
-| `profiles.py` | `ReagentProfile` (Br/Ur/NO3: polarity/adducts/normaliser/context) + `resolve('auto', config=)`; `register()` / `load_config()` add reagents from a JSON/TOML file (`--reagent-config`) without forking the package |
-| `timeseries.py` | **time-resolved disposition** (optional, `--ts-batch`): reagent-normalise a batch's per-sample peaks, cv_norm + family co-variation -> classify each M0 inlet-flat-background vs ambient analyte, demote flat di-bromide/CO3 background |
-| `tiers.py` | Identified/Candidate tiering (margin, density, lattice/BrCl, **mass-error gate, CO₃-channel gate, degeneracy-aware**) |
-| `report.py` | Excel / markdown / sheets |
-| `assign.py` | orchestrator + `PassConfig` + module manifest |
+| module                | role                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `chemistry.py`        | masses (incl. positive adducts: `[M+H]+`/`[M+Na]+`/`[M+NH4]+`/urea), formula algebra, grid (integer-DBE / Senior / O-cap), complexity penalty, grid cache                                                                                                                                                                                                                                                                |
+| `contexts.py`         | context profiles (incl. positive `uronium` + `polarity`/grid-width fields) + plausibility filter + contaminant families (incl. long-PDMS `pdms`)                                                                                                                                                                                                                                                                         |
+| `ledger.py`           | the peak DataFrame + invariants + commit API                                                                                                                                                                                                                                                                                                                                                                             |
+| `io_mascope.py`       | the ONLY Mascope I/O: peaks, cheminfo, parallel `match_compounds` + per-isotopologue parser, adduct detection, `estimate_offset` (rough pre-calibration)                                                                                                                                                                                                                                                                 |
+| `isotopes.py`         | prescan fingerprint → grid constraints; **`isotope_pattern()`** envelope predictor (per-element convolution)                                                                                                                                                                                                                                                                                                             |
+| `series_gka.py`       | GKA/Kendrick math, repeat units, propagation                                                                                                                                                                                                                                                                                                                                                                             |
+| `ladders.py`          | pass-6 anchored homolog/oxidation ladder gap-fill                                                                                                                                                                                                                                                                                                                                                                        |
+| `series_detect.py`    | automatic decoy-controlled series detection + chain extraction                                                                                                                                                                                                                                                                                                                                                           |
+| `reagents.py`         | reagent-cluster library + labeler (Br isotopologues; positive `[urea_n+H]+`; records `ion_formula`)                                                                                                                                                                                                                                                                                                                      |
+| `passes.py`           | arbitration (complexity + **calibration-aware off-trend penalty**) + the pass director + offset-tolerant `calibrate`/`confidence_label`/`relabel_confidence` + polarity-aware pass-0                                                                                                                                                                                                                                     |
+| `residual.py`         | Pass 4 residual explainer                                                                                                                                                                                                                                                                                                                                                                                                |
+| `siloxane.py`         | dedicated PDMS/siloxane-ladder assignment (+C₂H₆OSi spacing + ²⁹Si/³⁰Si envelope, late + locked)                                                                                                                                                                                                                                                                                                                         |
+| `analyte_viz.py`      | **consistent** Van Krevelen + raw time-series from a ledger + batch TS (one row per neutral, RAW intensity, changing-cv threshold). **`render_van_krevelen_full`** = EVERY assigned peak by CHO/CHON/CHOS backbone (Si/F/halogen folded in). `attach_dynamics(bin_minutes=)` for short batches. CLIs: `scripts/analyte_plots.py`, `scripts/analyte_widgets.py` (interactive HTML)                                        |
+| `degeneracy.py`       | honest cross-family mass-degeneracy measurement (`degeneracy_density`/note)                                                                                                                                                                                                                                                                                                                                              |
+| `cleanup.py`          | residual cleanup: isotope-confirmed recovery, bromide-cluster labelling, ringing-artifact flagging, satellite reclaim, **`prefer_amine_over_ammonium`** (positive: re-read uncorroborated/non-co-varying `[M+NH4]+` as the `[M+H]+` amine)                                                                                                                                                                               |
+| **`sampling.py`**     | THE RULE — `select_representative_samples` (5 evenly-time-spaced + max-TIC) for batch assignment                                                                                                                                                                                                                                                                                                                         |
+| **`assign_batch.py`** | `run(batch\|peaks, ts_peaks=, amine_r_min=)` — assign the reps, keep per-file ledgers, offset-aware merge (`align`) + jitter table; applies the positive amine gate at merge level                                                                                                                                                                                                                                       |
+| **`cluster.py`**      | correlation clustering (log-corr, COMPLETE linkage r>0.6, signed distance) → `render_a4` A4-portrait paginated panels + remaining-peaks overview. **Flatness gate** `split_varying`/`render_flat_panel` (cv<`FLAT_CV` bunched, not clustered). `render_changers` = A4-portrait big-standalone-changers page. `write_cluster_workbook(when=)` — byte-reproducible per-cluster XLSX (timestamps stamped from the run time) |
+| **`composition.py`**  | report composition accounting (pure): `signal_by_backbone` (intensity-weighted CHO/CHON/CHOS), `amine_shadow_stats`/`collapsed_composition` (the [M+NH4]+/[M+H]+-amine degeneracy two-way), `top_species_by_signal`, `oligomer_flag` (high-C high-O HOM-dimer candidates)                                                                                                                                                |
+| **`plausibility.py`** | chemical-plausibility QC: `scan(merged, polarity)` flags Candidate-only mass-coincidence formulas (high heteroatom / very low H/C / wrong-mode halogen); Identified never flagged (powers the `scrutiny` report section)                                                                                                                                                                                                 |
+| **`pdf_report.py`**   | STANDARD iterable PDF report (uniform A4) — `build()` over `SECTIONS=[cover, findings, coverage, composition, scrutiny, gka, families, changers, clusters, methods]`, ctx loaded once. PDF filename = `report_<run_id>.pdf`                                                                                                                                                                                              |
+| **`gka_figure.py`**   | STATIC GKA findings page: per-family small-multiple Kendrick mass-defect plots (`render_gka`), each rotated to flatten its homologous series into horizontal ladders. a family shows ONLY if it forms a series (`present_families`); contaminants (siloxane/fluorinated) need a short ≥2 ladder, else not plotted. Print counterpart of `scripts/gka_widget.py`                                                          |
+| `profiles.py`         | `ReagentProfile` (Br/Ur/NO3: polarity/adducts/normaliser/context) + `resolve('auto', config=)`; `register()` / `load_config()` add reagents from a JSON/TOML file (`--reagent-config`) without forking the package                                                                                                                                                                                                       |
+| `timeseries.py`       | **time-resolved disposition** (optional, `--ts-batch`): reagent-normalise a batch's per-sample peaks, cv_norm + family co-variation -> classify each M0 inlet-flat-background vs ambient analyte, demote flat di-bromide/CO3 background                                                                                                                                                                                  |
+| `tiers.py`            | Identified/Candidate tiering (margin, density, lattice/BrCl, **mass-error gate, CO₃-channel gate, degeneracy-aware**)                                                                                                                                                                                                                                                                                                    |
+| `report.py`           | Excel / markdown / sheets                                                                                                                                                                                                                                                                                                                                                                                                |
+| `assign.py`           | orchestrator + `PassConfig` + module manifest                                                                                                                                                                                                                                                                                                                                                                            |
 
 ## Testing & iteration
 
 `pytest tests/` (or `for t in tests/test_*.py; do python3 "$t"; done`) — **833 offline
-assertions across 30 files**, no network (io_mascope live smoke gated behind
+assertions across 30 files**, no network (io*mascope live smoke gated behind
 `MASCOPE_LIVE=1`). `python3 tests/test_smoke.py` is a 2-second no-creds install check.
-Every module has a matching `tests/test_<module>.py`; CI (`.github/workflows/test.yml`)
+Every module has a matching `tests/test*<module>.py`; CI (`.github/workflows/test.yml`)
 runs the suite on 3.11–3.13 with no credentials. Add a test with each change; keep it green.
-See `README.md` for the dev loop and `ROADMAP.md` for current state + the open
+See `README.md`for the dev loop and`ROADMAP.md` for current state + the open
 quality work + lessons.
 
 ## Gotchas
