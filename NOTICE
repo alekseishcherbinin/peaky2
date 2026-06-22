@@ -1,11 +1,12 @@
 Peaky
-Copyright 2026 Aleksei Scherbinin
+Copyright 2026 Karsa Oy
+
+Developed by Aleksei Scherbinin.
 
 This product is licensed under the Apache License, Version 2.0 (the "License").
 You may obtain a copy of the License in the LICENSE file in this repository or at
 
     http://www.apache.org/licenses/LICENSE-2.0
 
-Peaky reads data from Mascope (Karsa Oy) via the separately-licensed `mascope-sdk`
-package; "Mascope" and "Karsa" are referenced only to describe interoperability and
-are the property of their respective owners.
+Peaky reads data from Mascope, the mass-spectrometry data platform by Karsa Oy,
+via the separately-licensed `mascope-sdk` package.
