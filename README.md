@@ -138,3 +138,9 @@ pytest tests/                        # or run any tests/test_*.py as a standalon
 CI runs the suite on Python 3.11–3.13 with no credentials. Design invariants,
 development history, and the full module map live in **[SKILL.md](SKILL.md)** and
 **[ROADMAP.md](ROADMAP.md)**.
+
+## License
+
+Peaky is released under the **[Apache License 2.0](LICENSE)** — see [`LICENSE`](LICENSE)
+for the full text and [`NOTICE`](NOTICE) for attribution. `mascope-sdk` and the Mascope /
+Karsa platform are separately licensed and owned by their respective owners.

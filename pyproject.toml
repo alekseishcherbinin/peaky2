@@ -9,7 +9,17 @@ description = "Peaky — AI-native analysis toolbox for Mascope: reproducible CI
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Aleksei Scherbinin" }]
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 keywords = ["peaky", "mass-spectrometry", "CIMS", "peak-assignment", "van-krevelen", "mascope", "kendrick"]
+classifiers = [
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Chemistry",
+]
 
 # Runtime dependencies. mascope-sdk is the live Mascope/Karsa connector (public
 # PyPI, MIT); `pip install` pulls/updates it like any other dep. It is imported
