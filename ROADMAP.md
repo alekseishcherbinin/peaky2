@@ -90,6 +90,25 @@ Identified gain (+273) is the meaningful-confidence improvement. The `reclaim_en
 session-5 "no-op on real data" bug is now moot for this batch (the leak was the two audit clears,
 not deep halogen tails). Diagnostic scratch was in ~/mascope-output/_ckpt/ (cleaned).
 
+### REPRODUCIBILITY INDEX + time-series query (2026-06-22, follow-up 3)
+User: the per-batch `<reagent>_ts.parquet` holds the full peak×time table (all peaks, assigned +
+unassigned) — could we index the skill so runs are reproducible? Built (new `provenance.py`):
+- **`provenance.record_run`** wired into `pipeline.run_batch` (runs last, best-effort, never fatal):
+  writes **`run_manifest.json`** into every run dir — code identity (git commit+dirty, package
+  version, per-module sha1 hashes, python+dep versions), input (dataset/batch/sample_ids + **ts
+  parquet sha1**), the resolved `PassConfig` fingerprint (runtime fields dropped), and output
+  (**merged_ledger.csv sha1** + counts) — and appends a compact row to a cross-run registry
+  **`<out-dir>/index.jsonl`** (load via `pd.read_json(lines=True)`) for query/diff across runs.
+  Same commit + same ts_sha1 → same merged_ledger_sha1 (determinism-tested).
+- **`timeseries.trace(run_dir, formula_or_mz)`** — reproducible single-compound trace from a run's
+  cached parquet+merged_ledger: pass a neutral formula (→ its highest-score adduct m/z) or a float
+  m/z (any peak, assigned or not); returns tidy [datetime_utc, height] summed over the ppm window,
+  `df.attrs` carries the m/z + pipeline assignment ('<formula> <adduct> (<tier>)' or 'unassigned').
+NB the batch path does NOT pass cfg → it uses `assign.run`'s `PassConfig()` default, so the
+cutoff=100 default (above) is what the batch actually uses; the manifest records it. test_provenance
+(12) + trace tests (3); suite 32 files green. Live-verified on the 190107Z run (trace C10H14O6 →
+Identified 309 pts; trace 179.0076 → unassigned, peak 5004). COMMIT: <this commit>.
+
 
 **SESSION 4 — SHAREABILITY REFACTOR (2026-06-20). Goal: a small group `pip install`s + validates on
 THEIR machines.** A 7-dimension review (48 findings) produced a 5-phase plan. DECISIONS: ship as BOTH a

@@ -108,6 +108,34 @@ check("auto_bin_minutes returns the native cadence (6 min)", TS.auto_bin_minutes
 check("auto_bin_minutes floors at >=1 and falls back on <3 samples",
       TS.auto_bin_minutes(_ts24) >= 1 and isinstance(TS.auto_bin_minutes(_ts6.head(2)), int))
 
+# --- trace(): pull one compound's time series from a run dir ---------------
+import os as _os          # noqa: E402
+import tempfile as _tf    # noqa: E402
+
+_rd = _tf.mkdtemp()
+_times = pd.to_datetime(["2026-06-03T00:00:00Z", "2026-06-03T06:00:00Z",
+                         "2026-06-03T12:00:00Z"])
+_rows = []
+for _i, _t in enumerate(_times):
+    _rows += [{"datetime_utc": _t, "peak_id": f"a{_i}", "mz": 200.0, "height": 100.0 * (_i + 1), "area": 1.0},
+              {"datetime_utc": _t, "peak_id": f"b{_i}", "mz": 300.0, "height": 50.0, "area": 1.0}]
+pd.DataFrame(_rows).to_parquet(_os.path.join(_rd, "X_ts.parquet"))
+pd.DataFrame([{"mz": 200.0, "neutral_formula": "C10H8O4", "adduct": "[M-H]-",
+               "tier": "Identified", "ion_score": 0.9}]).to_csv(
+    _os.path.join(_rd, "merged_ledger.csv"), index=False)
+
+_tr = TS.trace(_rd, "C10H8O4")
+check("trace by formula resolves the assignment + sums the m/z window per time",
+      _tr.attrs["assignment"].startswith("C10H8O4 [M-H]- (Identified)")
+      and len(_tr) == 3 and list(_tr["height"]) == [100.0, 200.0, 300.0], _tr.attrs)
+_tu = TS.trace(_rd, 300.0)
+check("trace by m/z of an unexplained peak labels it 'unassigned'",
+      _tu.attrs["assignment"] == "unassigned" and len(_tu) == 3
+      and list(_tu["height"]) == [50.0, 50.0, 50.0], _tu.attrs)
+check("trace tol_ppm window returns nothing for an absent mass",
+      len(TS.trace(_rd, 250.0)) == 0)
+
+
 def test_all():
     assert FAIL == 0, f"{FAIL} checks failed"
 

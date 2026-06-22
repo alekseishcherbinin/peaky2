@@ -187,6 +187,13 @@ def generate_report(ctx: RunContext, ts, *, subject: str | None = None,
                                      ts_path=ctx.ts_path, batch_name=ctx.batch_name,
                                      run_id=ctx.run_id, generated=ctx.generated)
         log(f"[report] wrote {out['report_pdf']}")
+        # also emit a size-reduced companion for emailing (optional deps; no-op if
+        # absent or already small). The full report above is left untouched so it
+        # stays byte-for-byte deterministic.
+        small = R.compress_pdf(out["report_pdf"], log=log)
+        if small:
+            out["report_pdf_small"] = small
+            log(f"[report] compressed -> {small} ({os.path.getsize(small) / 1e6:.1f} MB)")
     return out
 
 
@@ -214,4 +221,21 @@ def run_batch(*, batch: str, dataset: str | None = None, reagent: str = "auto",
                  out_dir=ctx.out_dir, ts_peaks=ts, amine_r_min=amine_r_min,
                  log=log, **assign_kw)
     gen = generate_report(ctx, ts, subject=subject, do_report=do_report, log=log)
+
+    # provenance: pin this run to its exact code + input-data hash + config +
+    # output hash, and append it to the cross-run registry. Best-effort (never
+    # fatal). Runs LAST so ts_path / merged_ledger.csv exist to be hashed.
+    from . import passes as PA
+    from . import provenance as PV
+    summ = res.get("summary", {}) if isinstance(res, dict) else {}
+    PV.record_run(
+        run_dir=ctx.out_dir, base_out=os.path.expanduser(base_out),
+        batch_name=batch, dataset=dataset,
+        sample_ids=(res.get("sample_ids") if isinstance(res, dict) else None),
+        reagent=prof.name, cfg=assign_kw.get("cfg") or PA.PassConfig(),
+        ts_path=ctx.ts_path,
+        counts={"merged_M0": summ.get("merged_M0"),
+                "merged_tiers": summ.get("merged_tiers"),
+                "n_samples": summ.get("n_files")},
+        created_utc=ctx.when.isoformat(), log=log)
     return {"ctx": ctx, "assign": res, **gen}

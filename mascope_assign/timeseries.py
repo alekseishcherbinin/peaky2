@@ -23,6 +23,7 @@ All pure pandas/numpy; no network. Reference (2026-06-16 time-series unlock).
 from __future__ import annotations
 
 import bisect
+import os
 import re
 
 import numpy as np
@@ -250,3 +251,73 @@ def apply_timeseries(ledger: pd.DataFrame, peaks: pd.DataFrame, *,
                 summary["demoted"] += 1
     log(f"[timeseries] {summary}")
     return summary
+
+
+# ---------------------------------------------------------------------------
+# Reproducible single-compound time-series query
+# ---------------------------------------------------------------------------
+def find_ts_parquet(run_dir: str) -> str:
+    """The cached batch time series in a run dir (`*_ts.parquet`)."""
+    import glob
+    hits = sorted(glob.glob(os.path.join(os.path.expanduser(run_dir), "*_ts.parquet")))
+    if not hits:
+        raise FileNotFoundError(f"no *_ts.parquet in {run_dir}")
+    return hits[0]
+
+
+def trace(run_dir: str, query, *, tol_ppm: float = DEFAULT_TOL_PPM,
+          value: str = "height", ts: "pd.DataFrame | None" = None,
+          ledger: "pd.DataFrame | None" = None) -> pd.DataFrame:
+    """Pull the temporal trace of ONE compound from a finished run -- assigned OR
+    unassigned. Reproducible: reads the run's own ``*_ts.parquet`` (full per-sample
+    peak table) and ``merged_ledger.csv`` (the pipeline's assignments), so the
+    answer is fixed by the run, not by re-deriving anything.
+
+    query : a NEUTRAL FORMULA (str; resolved to its m/z via merged_ledger, taking
+            the highest-ion-score adduct) or a float M/Z (use any peak, assigned
+            or not). tol_ppm sets the m/z window summed per time point.
+
+    Returns a tidy DataFrame [datetime_utc, <value>] (one row per sample time,
+    summed over the window, time-sorted). ``df.attrs`` carries: mz, assignment
+    ('<formula> <adduct> (<tier>)' or 'unassigned'), n_peak_ids, tol_ppm.
+    """
+    import os as _os
+    ts = ts if ts is not None else pd.read_parquet(find_ts_parquet(run_dir))
+    if ledger is None:
+        mlp = _os.path.join(_os.path.expanduser(run_dir), "merged_ledger.csv")
+        ledger = pd.read_csv(mlp) if _os.path.exists(mlp) else pd.DataFrame()
+
+    assignment = "unassigned"
+    if isinstance(query, str):
+        hit = ledger[ledger.get("neutral_formula").astype(str) == query] \
+            if "neutral_formula" in ledger.columns else ledger.iloc[0:0]
+        if not len(hit):
+            raise KeyError(f"{query!r} is not an assigned neutral in {run_dir} "
+                           "(pass a float m/z to trace an unassigned peak)")
+        if "ion_score" in hit.columns:
+            hit = hit.sort_values("ion_score", ascending=False, na_position="last")
+        row = hit.iloc[0]
+        mz = float(row["mz"])
+        assignment = (f"{query} {row.get('adduct', '')}".strip()
+                      + f" ({row.get('tier', '?')})")
+    else:
+        mz = float(query)
+        if len(ledger) and "mz" in ledger.columns:
+            d = (ledger["mz"].astype(float) - mz).abs() / mz * 1e6
+            j = d.idxmin() if len(d) else None
+            if j is not None and d.loc[j] <= tol_ppm:
+                r = ledger.loc[j]
+                assignment = (f"{r.get('neutral_formula')} {r.get('adduct', '')}".strip()
+                              + f" ({r.get('tier', '?')})")
+
+    win = (ts["mz"].astype(float) - mz).abs() / mz * 1e6 <= tol_ppm
+    sub = ts[win]
+    if not len(sub):
+        out = pd.DataFrame({"datetime_utc": [], value: []})
+    else:
+        out = (sub.groupby("datetime_utc", as_index=False)[value].sum()
+               .sort_values("datetime_utc").reset_index(drop=True))
+    out.attrs.update({"mz": mz, "assignment": assignment,
+                      "n_peak_ids": int(sub["peak_id"].nunique()) if len(sub) else 0,
+                      "tol_ppm": tol_ppm, "value": value})
+    return out
