@@ -3,7 +3,10 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "peaky"
+# Distribution name on PyPI (`peaky` is taken). The IMPORT package + CLI stay
+# `peaky` (dist != import, like scikit-learn/sklearn): `pip install mascope-peaky`
+# then `import peaky` / run `peaky`.
+name = "mascope-peaky"
 version = "0.4.0"
 description = "Peaky — AI-native analysis toolbox for Mascope: reproducible CIMS peak assignment, clustering, and reporting."
 readme = "README.md"
@@ -39,7 +42,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
-# `pip install peaky[compress]` enables the size-reduced companion PDF
+# `pip install mascope-peaky[compress]` enables the size-reduced companion PDF
 # (pdf_report.compress_pdf). Absent these, the report still builds; only the
 # `_compressed.pdf` is skipped.
 compress = ["PyMuPDF>=1.23", "Pillow>=9.0"]

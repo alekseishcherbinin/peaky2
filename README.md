@@ -45,7 +45,8 @@ in the loop and it asks when a choice (reagent, cutoff) actually matters.
 
 Needs Python ≥ 3.11. Everything (including `mascope-sdk`) installs from public PyPI —
 no private index, and **no Mascope account is needed just to install or to run the
-offline tests.**
+offline tests.** (On PyPI the distribution is **`mascope-peaky`** — `peaky` was
+taken; the import package and CLI are still `peaky`.)
 
 ```bash
 git clone https://github.com/karsa-oy/peaky.git

@@ -33,10 +33,13 @@ batch mode, and a full design-doc set.
   endpoints. Additive and gated — modern servers are unaffected.
 
 ### Changed
-- **Import package renamed `mascope_assign` → `peaky`** (matching the dist + CLI
-  name). A `mascope_assign` back-compat shim aliases the old import path — including
-  submodules — to the same `peaky` objects, so existing `import mascope_assign`
-  code keeps working unchanged. Version bumped to 0.4.0.
+- **Import package renamed `mascope_assign` → `peaky`.** A `mascope_assign`
+  back-compat shim aliases the old import path — including submodules — to the same
+  `peaky` objects, so existing `import mascope_assign` code keeps working unchanged.
+  Version bumped to 0.4.0.
+- **PyPI distribution name is `mascope-peaky`** (`peaky` was already registered).
+  The import package and the `peaky` CLI are unchanged — `pip install mascope-peaky`
+  then `import peaky` / run `peaky` (dist ≠ import, like scikit-learn/sklearn).
 - **Single canonical lockfile.** Removed the hand-maintained `requirements.txt`
   (which had drifted from the real pins); `uv.lock` is now the only pinned source.
   `pip install -e .` uses the pyproject ranges; `uv sync` uses the exact pins. CI

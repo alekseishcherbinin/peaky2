@@ -53,7 +53,7 @@ shared by the writers and the report reader so the filenames can't drift.
 | Artifact | What it is |
 |---|---|
 | `report_<run-id>.pdf` | **The standard iterable A4 report** (cover · findings · coverage · composition · scrutiny · GKA · families · changers · clusters · methods). The cover shows the Report ID + a date+time "generated" line. |
-| `report_<run-id>_compressed.pdf` | Optional size-reduced companion for emailing (needs `pip install peaky[compress]`). The full report is left byte-for-byte untouched. |
+| `report_<run-id>_compressed.pdf` | Optional size-reduced companion for emailing (needs `pip install mascope-peaky[compress]`). The full report is left byte-for-byte untouched. |
 
 ### `data/` — bulky inputs kept with the run
 
