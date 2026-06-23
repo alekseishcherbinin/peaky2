@@ -11,6 +11,12 @@ install, content-stable reproducibility, organized outputs, a brightest-coverage
 batch mode, and a full design-doc set.
 
 ### Added
+- **`peaky setup`** — one-command workspace bootstrap: creates `.env` from the
+  template, points outputs at the workspace's `output/` folder (`PEAKY_OUTPUT_DIR`),
+  creates it, verifies the install (+ the Mascope connection if creds are set), and
+  prints the layout + next steps. Re-runnable. Makes "clone → install → know what to
+  do" a two-command path. Batch `--out-dir` now defaults to `$PEAKY_OUTPUT_DIR` (the
+  workspace `output/`) else `~/peaky-output`.
 - `docs/ARCHITECTURE.md` — the canonical design doc (ledger model, pass sequence,
   end-to-end data flow with diagram, reproducibility model, module map).
   Companion docs `docs/ASSIGNMENT.md` (what assignment produces, for a scientist)

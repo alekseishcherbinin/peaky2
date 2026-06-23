@@ -51,27 +51,32 @@ offline tests.**
 git clone https://github.com/karsa-oy/peaky.git
 cd peaky
 python3 -m pip install -e .          # registers the `peaky` command (and `mascope-assign` alias)
+peaky setup                          # creates .env + output/, verifies, prints what to do next
+```
+
+`peaky setup` turns the clone into a **self-contained workspace** and tells you
+what to do — re-run it any time:
+
+```
+peaky/                 ← the workspace (= your clone)
+  .env                 your Mascope creds (URL + token)   ← edit this
+  output/              every run's results land here  (PEAKY_OUTPUT_DIR)
+  peaky/  scripts/     the package + helper scripts
+  docs/                ARCHITECTURE / ASSIGNMENT / OUTPUTS  (+ SKILL.md)
 ```
 
 `pip install -e .` resolves the conservative version ranges in `pyproject.toml`.
 For the **exact pinned versions** validated in CI, use the lockfile instead:
-`uv sync` (or `uv pip sync` into an existing environment). `uv.lock` is the single
-source of truth for pins — there is no separate `requirements.txt`.
-
-Confirm with the no-network smoke test (≈2 s):
-
-```bash
-python3 tests/test_smoke.py          # "50 passed" => imports + deps OK
-```
+`uv sync`. `uv.lock` is the single source of truth for pins — there is no separate
+`requirements.txt`. A no-network smoke check: `python3 tests/test_smoke.py`.
 
 ### Credentials
 
-Copy the template and fill in your Mascope server URL + API token (from the Mascope
-web app's account / API settings). A project-local `.env` is git-ignored and found
-automatically:
+`peaky setup` created a git-ignored `.env` in the repo root — edit it with your
+Mascope server URL + API token (from the Mascope web app's account / API settings):
 
-```bash
-cp .env.example .env                 # then edit: MASCOPE_URL=...   MASCOPE_ACCESS_TOKEN=...
+```
+.env  ->  MASCOPE_URL=...   MASCOPE_ACCESS_TOKEN=...
 ```
 
 Prefer a shared location? Use `~/.mascope/.env` instead, or just `export MASCOPE_URL=…

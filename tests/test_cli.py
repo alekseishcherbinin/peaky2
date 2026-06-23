@@ -55,6 +55,33 @@ try:
 except SystemExit:
     check("no subcommand -> error", True)
 
+# ---- setup command + output-dir resolution ----------------------------------
+a = P.parse_args(["setup"])
+check("parse `setup`", a.func is cli.cmd_setup)
+check("resolve_out_dir: --out-dir wins", cli.resolve_out_dir("/x/y") == os.path.expanduser("/x/y"))
+os.environ["PEAKY_OUTPUT_DIR"] = "/tmp/peaky_test_out"
+check("resolve_out_dir: $PEAKY_OUTPUT_DIR honored when no --out-dir",
+      cli.resolve_out_dir(None) == "/tmp/peaky_test_out")
+os.environ.pop("PEAKY_OUTPUT_DIR", None)
+# cmd_setup scaffolds a workspace (no network: clear creds so it skips the connect check)
+import tempfile  # noqa: E402
+_saved = {k: os.environ.pop(k, None) for k in ("MASCOPE_URL", "MASCOPE_ACCESS_TOKEN")}
+_orig_root = cli._workspace_root
+try:
+    with tempfile.TemporaryDirectory() as _d:
+        open(os.path.join(_d, ".env.example"), "w").write("MASCOPE_URL=\nMASCOPE_ACCESS_TOKEN=\n")
+        cli._workspace_root = lambda: _d
+        cli.cmd_setup(SimpleNamespace())
+        _env = open(os.path.join(_d, ".env")).read()
+        check("setup creates .env + output/ + sets PEAKY_OUTPUT_DIR to the workspace output/",
+              os.path.isdir(os.path.join(_d, "output"))
+              and f"PEAKY_OUTPUT_DIR={os.path.join(_d, 'output')}" in _env)
+finally:
+    cli._workspace_root = _orig_root
+    for _k, _v in _saved.items():
+        if _v is not None:
+            os.environ[_k] = _v
+
 # ---- reagent resolution: explicit profile name needs NO network --------------
 ns = SimpleNamespace(adducts=None, reagent="Br", context=None, sample_id="X", no_cache=False)
 ad, ctx, note = cli._resolve_reagent(ns)

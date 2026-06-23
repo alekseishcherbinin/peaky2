@@ -4,36 +4,40 @@ A 5-minute path from a fresh clone to a peak-assignment report on **your own**
 Mascope data. For depth see [SKILL.md](SKILL.md); for dev/iteration see
 [README.md](README.md).
 
-## 1. Install
+## 1. Install + set up the workspace
 
 ```bash
 git clone https://github.com/karsa-oy/peaky.git && cd peaky
-python3 -m pip install -e .          # pulls mascope-sdk + pandas/numpy/scipy/matplotlib/openpyxl
+python3 -m pip install -e .   # pulls mascope-sdk + pandas/numpy/scipy/matplotlib/openpyxl; registers `peaky`
+peaky setup                   # creates .env + output/, verifies, prints what to do next
 ```
 Needs Python ≥ 3.11. Everything (incl. `mascope-sdk`) installs from public PyPI —
-no private index, no Mascope account needed just to install.
+no private index, no Mascope account needed just to install. `peaky setup` is
+idempotent — re-run it any time to re-check the workspace. After it runs you have
+**one self-contained folder**:
 
-Confirm the install with the no-network smoke test (≈2 s):
-
-```bash
-python3 tests/test_smoke.py          # "50 passed" => imports + deps OK
 ```
+peaky/                 ← the workspace (= your clone)
+  .env                 your Mascope creds (URL + token)   ← edit this (step 2)
+  output/              every run's results land here  (PEAKY_OUTPUT_DIR)
+  peaky/  scripts/     the package + helper scripts
+  docs/                ARCHITECTURE / ASSIGNMENT / OUTPUTS  (+ SKILL.md)
+```
+
+(Driving Peaky with Claude Code? Just point it at the clone and ask it to "install
+and set up Peaky" — it runs the two commands above and reports the layout.)
 
 ## 2. Credentials
 
-Copy the template to a **project-local `.env`** in the repo root (git-ignored,
-found automatically) and fill in your values:
+`peaky setup` created a git-ignored `.env` in the repo root. Edit it with your
+Mascope server URL + API token (from the Mascope web app → account / API settings):
 
 ```bash
-cp .env.example .env        # then edit .env -> MASCOPE_URL=...  MASCOPE_ACCESS_TOKEN=...
+#  .env  ->  MASCOPE_URL=...   MASCOPE_ACCESS_TOKEN=...
 ```
-Prefer a shared home location? Use `~/.mascope/.env` instead:
-```bash
-mkdir -p ~/.mascope && cp .env.example ~/.mascope/.env
-```
-You can also `export MASCOPE_URL=… MASCOPE_ACCESS_TOKEN=…`, or pass `--env
-/path/to/.env` to any command. Search order: `--env` / `$MASCOPE_ENV` > repo-root
-`.env` (or cwd) > `~/.mascope/.env`. Token: from the Mascope web app.
+Prefer a shared home location instead? Use `~/.mascope/.env`, `export MASCOPE_URL=…
+MASCOPE_ACCESS_TOKEN=…`, or pass `--env /path/to/.env` to any command. Search
+order: `--env` / `$MASCOPE_ENV` > repo-root `.env` (or cwd) > `~/.mascope/.env`.
 
 ## 3. Find your data
 

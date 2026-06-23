@@ -48,10 +48,15 @@ ledger's commit API enforces structural invariants so no pass can corrupt it.
 
 ## Pre-flight
 
-1. Run on the host Python via your shell / Bash tool (host has `mascope-sdk`),
-   not a sandboxed shell. `pip install -e .` once (pulls deps, registers the CLI).
-2. `.env` at `~/.mascope/.env` has `MASCOPE_URL` + `MASCOPE_ACCESS_TOKEN`
-   (auto-loaded; copy `.env.example`; or `--env` / `$MASCOPE_ENV`).
+1. Run on the host Python via the Bash tool / `peaky` CLI (host has `mascope-sdk`),
+   not a sandboxed shell. **First-time setup from a fresh clone:** `pip install -e .`
+   then **`peaky setup`** — that one command creates the workspace `.env` + `output/`,
+   verifies the install (and the connection if creds are set), and prints the layout
+   + next steps. Re-run `peaky setup` any time to re-check.
+2. Creds: edit the repo-root `.env` (or `~/.mascope/.env`) with `MASCOPE_URL` +
+   `MASCOPE_ACCESS_TOKEN` (auto-loaded; or `--env` / `$MASCOPE_ENV`). Batch outputs
+   default to the workspace `output/` (`$PEAKY_OUTPUT_DIR`, set by `peaky setup`)
+   else `~/peaky-output`; override per run with `peaky batch --out-dir ...`.
 3. Pick `--reagent` (forces analyte channels) and/or `--context` for the sample.
 
 ## Running
