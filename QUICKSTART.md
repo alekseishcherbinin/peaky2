@@ -48,7 +48,7 @@ peaky list samples  --batch "<your batch>" --dataset "<your workspace>"
 
 ```bash
 peaky assign --sample-id <ID> --reagent <Br|Ur|NO3|NO3_15N|auto> \
-    --height-cutoff 100 --output-dir ~/mascope-output/<name>
+    --height-cutoff 100 --output-dir ~/peaky-output/<name>
 ```
 `--reagent` forces the analyte channels (a positive/sparse sample otherwise
 mis-detects as negative). Writes `<ID>_<UTC>_{ledger.csv, assignments.xlsx,
@@ -62,17 +62,17 @@ builds cluster figures, a Van Krevelen and a PDF report:
 
 ```bash
 peaky batch --batch "<your batch>" --dataset "<your workspace>" \
-    --reagent <Br|Ur|NO3|NO3_15N|auto> --out-dir ~/mascope-output
+    --reagent <Br|Ur|NO3|NO3_15N|auto> --out-dir ~/peaky-output
 ```
-Creates a timestamped run folder `~/mascope-output/<batch-slug>_<UTC>/` with the
+Creates a timestamped run folder `~/peaky-output/<batch-slug>_<UTC>/` with the
 merged ledger, per-file ledgers, cluster/VK figures, and `report_<run-id>.pdf`.
 A full batch is ≈40 min (mostly the live `match_compounds` calls).
 
 Regenerate the figures + report later **offline** (no re-assignment) with:
 
 ```bash
-peaky report --run-dir ~/mascope-output/<run-folder> \
-    --reagent <Br|Ur|NO3|NO3_15N> --ts ~/mascope-output/<run-folder>/<tag>_ts.parquet
+peaky report --run-dir ~/peaky-output/<run-folder> \
+    --reagent <Br|Ur|NO3|NO3_15N> --ts ~/peaky-output/<run-folder>/<tag>_ts.parquet
 ```
 
 ## Adding your reagent

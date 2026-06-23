@@ -9,7 +9,7 @@ shared by the writers and the report reader so the filenames can't drift.
 ## Batch run — one versioned folder per run
 
 `peaky batch` creates **one timestamped folder** under `--out-dir`
-(default `~/mascope-output`), so a re-run never overwrites a previous one:
+(default `~/peaky-output`), so a re-run never overwrites a previous one:
 
 ```
 <batch-slug>_<YYYY-MM-DDTHHMMSSZ>/     ← folder name == Report ID (UTC stamp)

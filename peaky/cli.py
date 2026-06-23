@@ -283,7 +283,7 @@ def build_parser() -> argparse.ArgumentParser:
     pb.add_argument("--reagent", default="auto", help="auto | Br | Ur | NO3 | ...")
     pb.add_argument("--reagent-config", default=None,
                     help="JSON/TOML file registering extra reagent profiles")
-    pb.add_argument("--out-dir", default="~/mascope-output",
+    pb.add_argument("--out-dir", default="~/peaky-output",
                     help="base output dir (a versioned run folder is created under it)")
     pb.add_argument("--ts", default=None,
                     help="cached full-batch TS parquet (else fetched live from the server)")

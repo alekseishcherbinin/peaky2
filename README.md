@@ -116,11 +116,11 @@ peaky list samples  --batch "<your batch>" --dataset "<your workspace>"
 
 # one sample
 peaky assign --sample-id <ID> --reagent <Br|Ur|NO3|NO3_15N|auto> \
-    --height-cutoff 100 --output-dir ~/mascope-output/<name>
+    --height-cutoff 100 --output-dir ~/peaky-output/<name>
 
 # a whole batch (representative subset -> merge -> clusters -> Van Krevelen -> PDF)
 peaky batch  --batch "<your batch>" --dataset "<your workspace>" \
-    --reagent <Br|Ur|NO3|NO3_15N|auto> --out-dir ~/mascope-output
+    --reagent <Br|Ur|NO3|NO3_15N|auto> --out-dir ~/peaky-output
 ```
 
 `--reagent` forces the analyte channels (a positive/sparse sample otherwise

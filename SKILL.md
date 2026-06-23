@@ -65,11 +65,11 @@ peaky list samples --batch "<batch>" --dataset "<workspace>"
 
 # one sample
 peaky assign --sample-id <ID> --reagent <Br|Ur|NO3|NO3_15N|auto> \
-    --height-cutoff 100 --output-dir ~/mascope-output/<name>
+    --height-cutoff 100 --output-dir ~/peaky-output/<name>
 
 # a whole batch (assign subset -> merge -> cluster -> Van Krevelen -> PDF report)
 peaky batch --batch "<batch>" --dataset "<workspace>" --reagent <Br|Ur|...> \
-    [--select representative|brightest] --out-dir ~/mascope-output
+    [--select representative|brightest] --out-dir ~/peaky-output
 
 # regenerate figures + PDF of an existing run, offline (no assignment, no network)
 peaky report --run-dir <run-folder> --reagent <Br|Ur|...> --ts <ts.parquet>
