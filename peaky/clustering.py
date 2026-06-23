@@ -69,11 +69,14 @@ def cluster_batch(out_dir, ts, profile, *, merged=None, tag=None, label=None,
         ts = pd.read_parquet(os.path.expanduser(ts))
     ts = ts.copy()
     ts["datetime_utc"] = pd.to_datetime(ts["datetime_utc"], utc=True)
-    # time-bin width: aim for ~50 bins across the (often short, dense) batch span.
-    BIN_MIN = bin_minutes or TS.auto_bin_minutes(ts)
+    # Native per-sample time resolution by default (BIN_MIN=None): the samples are
+    # the common time axis, so traces + correlation use one point per sample at its
+    # real time — no re-gridding onto a uniform lattice (which aliased into spurious
+    # empty bins). Pass bin_minutes=int to time-bin instead.
+    BIN_MIN = bin_minutes
     span_min = (ts["datetime_utc"].max() - ts["datetime_utc"].min()).total_seconds() / 60.0
     log(f"=== {tag} ({label}) : merged M0={len(merged)}, TS samples={ts['sample_item_id'].nunique()}, "
-        f"span={span_min:.0f}min -> bin={BIN_MIN}min ===")
+        f"span={span_min:.0f}min -> res={'native/sample' if BIN_MIN is None else str(BIN_MIN)+'min'} ===")
 
     def cv_of(traces, cols):
         out = {}
@@ -230,6 +233,8 @@ def cluster_batch(out_dir, ts, profile, *, merged=None, tag=None, label=None,
     def to_grid(m, bin_minutes=BIN_MIN):
         m = m.reindex(tstamp.sort_values().index)
         hr = (tstamp.reindex(m.index) - tstamp.min()).dt.total_seconds().values / 3600.0
+        if bin_minutes is None:                            # NATIVE — one row per sample
+            return hr, m.reset_index(drop=True)
         g = np.arange(0, np.nanmax(hr) + bin_minutes / 60.0, bin_minutes / 60.0)
         return g, m.groupby(np.digitize(hr, g)).median().reindex(range(1, len(g) + 1))
 

@@ -58,7 +58,12 @@ with tempfile.TemporaryDirectory() as d:
     check("returns a dict with the expected keys",
           all(k in res for k in ("changing", "flat_clusters", "changers",
                                  "unassigned", "bin_minutes", "out_dir", "tag")))
-    check("bin_minutes is a positive int", isinstance(res["bin_minutes"], int) and res["bin_minutes"] >= 1)
+    check("bin_minutes is None by default (native per-sample resolution)",
+          res["bin_minutes"] is None, res["bin_minutes"])
+    # an explicit bin width still works (legacy time-binning)
+    res2 = CLU.cluster_batch(d, ts, P.resolve("Br"), tag="T2", bin_minutes=3, log=lambda *a: None)
+    check("explicit bin_minutes is honored (legacy binning still available)",
+          res2["bin_minutes"] == 3, res2["bin_minutes"])
     # tables -> tables/, figures -> figures/ (see paths.RunPaths)
     for fn in ("clusters_changing_T.csv", "clusters_flat_T.csv",
                "clusters_unassigned_T.csv", "channel_agreement_T.csv"):
