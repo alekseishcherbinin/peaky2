@@ -57,6 +57,20 @@ def run_id(batch_name: str, when: datetime | None = None) -> str:
     return f"{slugify(batch_name)}_{run_stamp(when)[0]}"
 
 
+def stamp_source_date_epoch(when: datetime) -> str:
+    """Export the run's `when` as ``SOURCE_DATE_EPOCH`` so every downstream renderer
+    stamps the RUN time, not ``now()``. matplotlib reads it for PNG/PDF metadata and
+    the xlsx writer reads it via ``cluster._resolve_when`` — this single env var is
+    matplotlib's ONLY reproducible-stamp hook (there is no per-savefig `when`), so
+    setting it here is what actually makes a run byte-reproducible: re-run at the
+    same `when` over the same inputs → identical figures / PDF / workbooks. Returns
+    the epoch string it set."""
+    w = when if when.tzinfo else when.replace(tzinfo=timezone.utc)
+    epoch = str(int(w.timestamp()))
+    os.environ["SOURCE_DATE_EPOCH"] = epoch
+    return epoch
+
+
 def make_run_dir(base: str, batch_name: str, when: datetime | None = None) -> str:
     """Create and return a fresh per-run output folder `base/<run_id>`."""
     d = os.path.join(os.path.expanduser(base), run_id(batch_name, when))
@@ -166,6 +180,10 @@ def generate_report(ctx: RunContext, ts, *, subject: str | None = None,
     from . import analyte_viz as V
     from . import clustering as CLU
     from . import pdf_report as R
+
+    # Pin every figure/PDF/workbook to the RUN time (not now()) so the run is
+    # byte-reproducible. Set before anything renders.
+    stamp_source_date_epoch(ctx.when)
 
     if isinstance(ts, str):
         ctx.ts_path = os.path.expanduser(ts)

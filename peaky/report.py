@@ -16,6 +16,7 @@ from ledger columns, so they are reproducible.
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -269,7 +270,12 @@ def summary_stats(ledger: pd.DataFrame, *, context: str = "",
         add("Run", "sample_id", sample_id)
     if context:
         add("Run", "context", context)
-    add("Run", "generated (UTC)", datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"))
+    # Honor SOURCE_DATE_EPOCH (the run driver sets it to the run time) so this
+    # cell is reproducible too; fall back to now() for an ad-hoc single-sample run.
+    _sde = os.environ.get("SOURCE_DATE_EPOCH")
+    _gen = (datetime.fromtimestamp(int(_sde), tz=timezone.utc) if _sde
+            else datetime.now(timezone.utc))
+    add("Run", "generated (UTC)", _gen.strftime("%Y-%m-%d %H:%M"))
     add("Run", "peaks total", n)
 
     role_label = {L.ROLE_M0: "assigned (M0)", L.ROLE_ISO: "isotopologue children",

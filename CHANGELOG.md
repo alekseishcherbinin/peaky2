@@ -30,7 +30,21 @@ install, enforced reproducibility, organized outputs, and a design doc.
   points at `docs/ARCHITECTURE.md` as the entry point for how Peaky works.
 - Repository URL → `github.com/karsa-oy/peaky` (the public home).
 
+### Fixed
+- **Reproducibility is now enforced, not just claimed.** The run driver exports the
+  run's `when` as `SOURCE_DATE_EPOCH` (`pipeline.stamp_source_date_epoch`) before any
+  rendering, so matplotlib stamps it into PNG/PDF metadata and the xlsx writer reads
+  it via `cluster._resolve_when`. Two runs over the same inputs at the same `when` are
+  now byte-identical across figures, PDF, and workbooks; a different `when` changes the
+  bytes (the stamp tracks the run, like the Report ID). The single-sample report's
+  "generated" cell honors the same variable. `test_determinism.py` now drives the real
+  helper and asserts byte-stability for all three artifact types.
+- `run_manifest.json` stores the input time-series path relative to the run dir (or
+  absolute when referenced externally) instead of a bare basename, so it stays
+  reproducible when the input TS is referenced rather than copied.
+- Documented `cleanup.reclaim_envelope_tails` as a known no-op on real data (the leak it
+  targets is absorbed upstream); kept but no longer implicitly trusted.
+
 <!-- Filled in as the remaining phases land:
-### Fixed (reproducibility) — run driver now exports SOURCE_DATE_EPOCH from the run time so figures/PDF are byte-stable.
 ### Changed (outputs)     — run dir organized into figures/ tables/ report/; input time-series no longer copied per run.
 -->
