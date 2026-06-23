@@ -26,6 +26,14 @@ from . import timeseries as TS
 
 __version__ = "0.2.0"  # + representative-sample selection (5 time-grid + max-TIC)
 
+# Content-stable epoch for SOURCE_DATE_EPOCH. NOT the run time: figures, workbooks
+# and the ledger are a PURE FUNCTION of the input data, so their embedded metadata
+# timestamps must be constant — a re-run of the same data, whenever it happens,
+# yields byte-identical figures/tables. The RUN time reaches output only as visible
+# text (PDF cover "generated" + Report ID), the run-folder name, and run_manifest.json.
+# 315532800 = 1980-01-01T00:00:00Z (also the zip-format mtime floor the xlsx writer needs).
+CONTENT_EPOCH = 315532800
+
 STAGES = ("matrix", "assign", "cluster", "validate")
 
 
@@ -58,16 +66,16 @@ def run_id(batch_name: str, when: datetime | None = None) -> str:
     return f"{slugify(batch_name)}_{run_stamp(when)[0]}"
 
 
-def stamp_source_date_epoch(when: datetime) -> str:
-    """Export the run's `when` as ``SOURCE_DATE_EPOCH`` so every downstream renderer
-    stamps the RUN time, not ``now()``. matplotlib reads it for PNG/PDF metadata and
-    the xlsx writer reads it via ``cluster._resolve_when`` — this single env var is
-    matplotlib's ONLY reproducible-stamp hook (there is no per-savefig `when`), so
-    setting it here is what actually makes a run byte-reproducible: re-run at the
-    same `when` over the same inputs → identical figures / PDF / workbooks. Returns
-    the epoch string it set."""
-    w = when if when.tzinfo else when.replace(tzinfo=timezone.utc)
-    epoch = str(int(w.timestamp()))
+def stamp_source_date_epoch(when=None) -> str:
+    """Export the FIXED ``CONTENT_EPOCH`` as ``SOURCE_DATE_EPOCH`` so every renderer
+    stamps a constant time, not ``now()`` and not the run time. matplotlib reads it
+    for PNG/PDF metadata and the xlsx writer reads it via ``cluster._resolve_when``;
+    this is matplotlib's ONLY reproducible-stamp hook. Pinning it to a constant makes
+    figures, workbooks and tables a PURE FUNCTION OF THE INPUT DATA — the same data
+    re-run at any time yields byte-identical figures/tables. Run time is NOT carried
+    here; it reaches output only as visible PDF-cover text + the Report ID + the
+    run-folder name. `when` is accepted for back-compat but IGNORED. Returns the epoch."""
+    epoch = str(CONTENT_EPOCH)
     os.environ["SOURCE_DATE_EPOCH"] = epoch
     return epoch
 
@@ -182,9 +190,10 @@ def generate_report(ctx: RunContext, ts, *, subject: str | None = None,
     from . import clustering as CLU
     from . import pdf_report as R
 
-    # Pin every figure/PDF/workbook to the RUN time (not now()) so the run is
-    # byte-reproducible. Set before anything renders.
-    stamp_source_date_epoch(ctx.when)
+    # Pin figures/PDF/workbooks to a FIXED content epoch (not the run time) so the
+    # scientific content is byte-identical regardless of WHEN it's run. The run time
+    # appears only as cover text + Report ID (ctx.generated / ctx.run_id below).
+    stamp_source_date_epoch()
 
     if isinstance(ts, str):
         ctx.ts_path = os.path.expanduser(ts)        # reference an existing parquet, never copy

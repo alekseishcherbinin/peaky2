@@ -1,14 +1,17 @@
-"""Determinism regression — the run's reproducibility contract.
+"""Determinism regression — the run's reproducibility CONTRACT.
 
-A run is a deterministic function of its inputs + its `when`. The driver
-(`pipeline.stamp_source_date_epoch`) exports `when` as SOURCE_DATE_EPOCH; from
-there:
-  * matplotlib stamps it (not now()) into PNG/PDF metadata, and
-  * the xlsx writer reads it via `cluster._resolve_when`,
-so every figure / PDF / workbook is byte-identical on a re-run at the same `when`,
-and a different `when` changes the bytes (the stamp tracks the run, like the
-Report ID). This test locks that contract for ALL THREE artifact types and for
-the actual `stamp_source_date_epoch` helper the pipeline calls.
+The scientific content of a run — every figure's pixels, the assignment tables
+(merged_ledger.csv, per-file csv, cluster csv/xlsx) and material data — is a PURE
+FUNCTION OF THE INPUT DATA. It is byte-identical regardless of WHEN the run
+happens. Run time reaches output ONLY as visible text on the PDF cover (the
+"generated" line + Report ID), the run-folder name, and run_manifest.json
+provenance — never as bytes inside a figure or a data table.
+
+Mechanically: `pipeline.stamp_source_date_epoch()` pins SOURCE_DATE_EPOCH to a
+FIXED content epoch (not the run time), so matplotlib's PNG/PDF metadata and the
+openpyxl xlsx timestamps are constant. This test asserts: two runs at DIFFERENT
+`when` over the same inputs -> identical figure/xlsx/csv bytes; a PDF differs only
+when its visible cover text differs.
 
 Run: python3 tests/test_determinism.py
 """
@@ -26,7 +29,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 from peaky import cluster as CL  # noqa: E402
-from peaky.pipeline import stamp_source_date_epoch  # noqa: E402
+from peaky.pipeline import CONTENT_EPOCH, stamp_source_date_epoch  # noqa: E402
 
 PASS = FAIL = 0
 def check(name, cond, detail=""):
@@ -35,9 +38,11 @@ def check(name, cond, detail=""):
     else: FAIL += 1; print(f"FAIL  {name}  {detail}")
 
 
-def render(path, fmt):
+def render(path, fmt, cover=None):
     fig, ax = plt.subplots(figsize=(3, 2))
     ax.plot([0, 1, 2], [2, 1, 3]); ax.set_title("determinism")
+    if cover:                       # mimic the PDF cover's run-time TEXT
+        fig.text(0.1, 0.95, f"generated {cover}")
     fig.savefig(path, format=fmt); plt.close(fig)
 
 
@@ -57,59 +62,54 @@ def xlsx(path):
     CL.write_cluster_workbook(_ROWS, path, meta=_META, member_cols=["neutral_formula", "tier"])
 
 
+w1 = datetime(2026, 6, 23, 12, 0, tzinfo=timezone.utc)
+w2 = datetime(2027, 1, 1, 9, 30, tzinfo=timezone.utc)   # a DIFFERENT run time
+
 with tempfile.TemporaryDirectory() as d:
-    # ---- 1. low-level: matplotlib honours a fixed SOURCE_DATE_EPOCH ----
-    os.environ["SOURCE_DATE_EPOCH"] = "1700000000"
-    a, b = os.path.join(d, "a.pdf"), os.path.join(d, "b.pdf")
-    render(a, "pdf"); render(b, "pdf")
-    check("PDF byte-identical at a fixed SOURCE_DATE_EPOCH",
-          sha(a) == sha(b), f"{sha(a)[:10]} vs {sha(b)[:10]}")
+    # ---- 1. the helper pins a FIXED content epoch, independent of `when` ----
+    got1 = stamp_source_date_epoch(w1)
+    got2 = stamp_source_date_epoch(w2)          # different when -> SAME epoch
+    check("stamp_source_date_epoch is INDEPENDENT of `when` (fixed content epoch)",
+          got1 == got2 == str(CONTENT_EPOCH), f"{got1} / {got2} / {CONTENT_EPOCH}")
+    check("SOURCE_DATE_EPOCH is the fixed content epoch",
+          os.environ.get("SOURCE_DATE_EPOCH") == str(CONTENT_EPOCH))
 
-    os.environ["SOURCE_DATE_EPOCH"] = "1800000000"
-    c = os.path.join(d, "c.pdf"); render(c, "pdf")
-    check("PDF bytes change when SOURCE_DATE_EPOCH changes (stamp tracks the run)",
-          sha(c) != sha(a), "matplotlib not honouring SOURCE_DATE_EPOCH")
-
-    os.environ["SOURCE_DATE_EPOCH"] = "1700000000"
-    e, f = os.path.join(d, "e.png"), os.path.join(d, "f.png")
-    render(e, "png"); render(f, "png")
-    check("PNG byte-identical at a fixed SOURCE_DATE_EPOCH",
-          sha(e) == sha(f), f"{sha(e)[:10]} vs {sha(f)[:10]}")
-
-    # ---- 2. the actual helper the pipeline calls ----
-    w1 = datetime(2026, 6, 23, 12, 0, tzinfo=timezone.utc)
-    w2 = datetime(2026, 6, 24, 12, 0, tzinfo=timezone.utc)
-    os.environ.pop("SOURCE_DATE_EPOCH", None)
-    got = stamp_source_date_epoch(w1)
-    check("stamp_source_date_epoch sets SOURCE_DATE_EPOCH to the run epoch",
-          os.environ.get("SOURCE_DATE_EPOCH") == got == str(int(w1.timestamp())), got)
-    # naive datetime is treated as UTC (no crash, no local-tz drift)
-    naive = stamp_source_date_epoch(datetime(2026, 6, 23, 12, 0))
-    check("stamp_source_date_epoch treats a naive datetime as UTC",
-          naive == str(int(w1.timestamp())), naive)
-
-    # ---- 3. end-to-end: all THREE artifact types stable across a re-run at the
-    #         same `when`, and changed at a different `when` — driven only by the
-    #         helper (no manual env juggling), exactly as the pipeline does it. ----
-    def artifacts(tag):
-        stamp_source_date_epoch(w1)
-        pdf = os.path.join(d, f"{tag}.pdf"); render(pdf, "pdf")
+    # ---- 2. THE CONTRACT: different run time -> IDENTICAL content bytes ----
+    # (figures, workbook, and a bare/cover-less PDF), driven only by the helper
+    # exactly as the pipeline does it.
+    def artifacts(tag, when):
+        stamp_source_date_epoch(when)           # ignores `when` -> fixed epoch
         png = os.path.join(d, f"{tag}.png"); render(png, "png")
         xl = os.path.join(d, f"{tag}.xlsx"); xlsx(xl)
-        return sha(pdf), sha(png), sha(xl)
+        pdf = os.path.join(d, f"{tag}.pdf"); render(pdf, "pdf")    # no cover text
+        return sha(png), sha(xl), sha(pdf)
 
-    run1 = artifacts("run1")
-    run2 = artifacts("run2")               # same when -> identical
-    check("re-run at the same when -> identical PDF", run1[0] == run2[0])
-    check("re-run at the same when -> identical PNG", run1[1] == run2[1])
-    check("re-run at the same when -> identical xlsx (write_cluster_workbook)",
-          run1[2] == run2[2], f"{run1[2][:10]} vs {run2[2][:10]}")
+    a = artifacts("runA", w1)
+    b = artifacts("runB", w2)                   # DIFFERENT when, same inputs
+    check("different `when` -> IDENTICAL figure PNG bytes", a[0] == b[0])
+    check("different `when` -> IDENTICAL cluster xlsx bytes (write_cluster_workbook)",
+          a[1] == b[1], f"{a[1][:10]} vs {b[1][:10]}")
+    check("different `when` -> IDENTICAL bare-figure PDF bytes (no run text)", a[2] == b[2])
 
-    stamp_source_date_epoch(w2)            # different when -> different bytes
-    pdf2 = os.path.join(d, "later.pdf"); render(pdf2, "pdf")
-    xl2 = os.path.join(d, "later.xlsx"); xlsx(xl2)
-    check("a later when -> different PDF bytes", sha(pdf2) != run1[0])
-    check("a later when -> different xlsx bytes", sha(xl2) != run1[2])
+    # ---- 3. material CSV carries no clock -> byte-identical by construction ----
+    import pandas as pd  # noqa: E402
+    df = pd.DataFrame({"mz": [169.12, 183.05], "neutral_formula": ["C10H16O2", "C9H10N2O"],
+                       "tier": ["Identified", "Candidate"]})
+    p1, p2 = os.path.join(d, "led1.csv"), os.path.join(d, "led2.csv")
+    df.to_csv(p1, index=False); df.to_csv(p2, index=False)
+    check("merged_ledger-style CSV is byte-identical (no run time in material data)",
+          sha(p1) == sha(p2))
+
+    # ---- 4. the ONLY cross-run variation: the visible cover TIMESTAMP TEXT ----
+    # two PDFs identical except a cover string, under the SAME fixed epoch, MUST differ.
+    stamp_source_date_epoch(w1)
+    g1 = os.path.join(d, "cover1.pdf"); render(g1, "pdf", cover="2026-06-23 12:00 UTC")
+    g2 = os.path.join(d, "cover2.pdf"); render(g2, "pdf", cover="2027-01-01 09:30 UTC")
+    check("a report PDF differs ONLY because its visible cover timestamp differs",
+          sha(g1) != sha(g2))
+    # ...and the SAME cover text reproduces byte-for-byte (true determinism)
+    g3 = os.path.join(d, "cover3.pdf"); render(g3, "pdf", cover="2026-06-23 12:00 UTC")
+    check("same cover text + same data -> byte-identical PDF", sha(g1) == sha(g3))
 
 
 def test_all():
