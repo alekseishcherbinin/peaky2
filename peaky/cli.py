@@ -1,8 +1,11 @@
 """Console entry point for `peaky` (alias: `mascope-assign`).
 
 Subcommands:
+  setup    one-command workspace bootstrap (.env + output/ + verify); run once after install
   list     discover data on the server (datasets / batches / samples)
   assign   single-sample multi-pass assignment -> ledger/xlsx/md/json/gka.html
+  batch    whole-batch pipeline: assign subset -> merge -> cluster -> Van Krevelen -> PDF
+  report   regenerate figures + PDF from an existing run folder (offline)
   gka      build the interactive rotating-GKA HTML from a ledger CSV (offline)
 
 Run `peaky <cmd> --help` for each. Heavy work runs on the host Python
@@ -409,6 +412,7 @@ Next steps:
   2. peaky list datasets
   3. peaky batch --batch "<name>" --dataset "<workspace>" --reagent <Br|Ur|NO3|...>
      -> a versioned run folder under output/ (ledger + figures + PDF report)
+     (one sample only? peaky assign --sample-id <ID> --reagent <Br|Ur|...>)
   (or just ask Claude: "assign formulas for batch <name> with the bromide reagent")""")
 
 

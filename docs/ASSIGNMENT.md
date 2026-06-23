@@ -54,6 +54,7 @@ justify:
 | Pass | What it does |
 |---|---|
 | **Pre** | Detect reagent adducts; prescan the isotope fingerprint; **label reagent-ion clusters** (e.g. Brₙ, BrO/BrO₂/BrO₃ with both ⁷⁹/⁸¹Br) so they are never candidates. |
+| **0** | **Known species (committed + locked, runs first):** specific families that the generic grid/gates would otherwise miss — atmospheric acids/radicals, nitroaromatics, **PFCAs**, **chlorinated paraffins** (only with a confirmed ³⁷Cl envelope), silanediol contaminants, and (positive mode) **organophosphates** (monoisotopic P → require ≥2 channels). |
 | **1** | Lock the high-confidence **CHO/CHON backbone**: grid-enumerate candidates, score with `match_compounds`, arbitrate (complexity-penalised, isotopologue-gated), commit the M0 owners + attach isotopologue children. Pass-1 self-calibration refines the mass offset. |
 | **2** | **Iterative GKA series** expansion from the locked anchors (CH₂/O/H₂O/CO/CO₂/C₂H₂O + siloxane/CF₂), chaining each confirmed member as a new anchor. |
 | **3** | **Automatic series detection** (the "rotating plot") opens contaminant families on decoy-controlled evidence — organosulfate/nitrate/siloxane/amine, isotope-gated bromo/chloro-organics. |
@@ -63,11 +64,12 @@ justify:
 | **cleanup** | Isotope-confirmed recovery of molecules the score gate dropped, bromide-cluster relabelling, ringing-artifact flagging, and (positive mode) re-reading uncorroborated `[M+NH4]+` as the `[M+H]+` amine. |
 | **tiers** | The final verdict (below). Degeneracy density is measured first so a mass-degenerate commit can't claim Identified. |
 
-(Interleaved sweeps — isotope-envelope completion, composite detection, the
-dedicated siloxane ladder — claim satellites and Si oligomers the CHON-centric
-heuristics otherwise mis-read. A known-species pass-0 also commits specific
-monoisotopic families that would otherwise be missed: PFCAs, organophosphates,
-³⁷Cl-confirmed chlorinated paraffins.)
+(Passes 2/3 run via the `series_gka` / `series_detect` engines under the `passes`
+director. Interleaved sweeps — isotope-envelope completion, **composite detection
+(halide-CIMS only — a no-op in positive urea mode)**, the dedicated siloxane
+ladder — claim satellites and Si oligomers the CHON-centric heuristics otherwise
+mis-read. CLI toggles: `--no-pass2/3/4`; `--no-pass5` disables **both** Pass 5 and
+the Pass-6 ladder gap-fill.)
 
 ## The structural chemistry gates
 

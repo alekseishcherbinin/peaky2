@@ -300,7 +300,7 @@ homologous series flatten into horizontal rows; peaks colored by status
 (backbone / low / unassigned). Band detector uses the mass-accuracy-derived
 tolerance `δGKA ≈ (X/mass(R))·δm`, `δm = ppm·(m/z)·1e-6`. Use it to spot
 structure (CF₂ contaminant ladders, oxidation series) the auto-detector did not
-already open. `run_assignment.py` emits one per run.
+already open. `peaky assign` emits one per run (plus a second over the unexplained residual).
 
 ## Module map (`peaky/`)
 

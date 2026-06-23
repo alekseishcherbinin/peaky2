@@ -137,9 +137,10 @@ commitments the previous ones justify. (Condensed; the authoritative table is in
 | stage        | module            | what it commits                                                                 |
 | ------------ | ----------------- | ------------------------------------------------------------------------------- |
 | **Pre**      | `reagents`/`isotopes` | detect reagent adducts; prescan isotope fingerprint; label reagent-ion clusters (Brₙ, BrO/BrO₂/BrO₃, ⁷⁹/⁸¹Br) so they are never candidates |
+| **0**        | `passes`          | **known species** (committed + locked, first): atmospheric acids, nitroaromatics, PFCAs, ³⁷Cl-confirmed chlorinated paraffins, silanediols, +mode organophosphates — families the generic grid would miss |
 | **1**        | `passes`          | lock the high-confidence **CHO/CHON backbone**: enumerate → score → arbitrate → commit M0 owners + isotopologue children |
-| **2**        | `series_gka`      | **iterative GKA series** expansion from locked anchors (CH₂/O/H₂O/CO/CO₂/…) |
-| **3**        | `series_detect`   | **automatic series detection** ("rotating plot") opens contaminant families on decoy-controlled evidence |
+| **2**        | `passes` (`series_gka`) | **iterative GKA series** expansion from locked anchors (CH₂/O/H₂O/CO/CO₂/…) |
+| **3**        | `passes` (`series_detect`) | **automatic series detection** ("rotating plot") opens contaminant families on decoy-controlled evidence |
 | **4**        | `residual`        | **residual explainer**: ~1.998-Da isotope doublets, deep 2-step series, ppm-disciplined |
 | **5**        | `passes`          | **known-neutral completion**: cross-channel partners + series gaps (no new formula space) |
 | **6**        | `ladders`         | **anchored ladder gap-fill**: walk +O/+CH₂/+CO₂/−H₂O diagonals out from Identified anchors (Candidate tier) |
@@ -148,6 +149,11 @@ commitments the previous ones justify. (Condensed; the authoritative table is in
 | cleanup      | `cleanup`         | isotope-confirmed recovery, bromide-cluster labelling, ringing/sidelobe artifact flagging |
 | degeneracy   | `degeneracy`      | honest cross-family mass-degeneracy density; an uncorroborated mass-degenerate commit is capped at Candidate |
 | tiers        | `tiers`           | final **Identified / Candidate** verdict (margin, density, mass-error gate, degeneracy-aware) |
+
+Also interleaved: **composite detection** (`cleanup`/`degeneracy`) flags an M0
+whose intensity exceeds its M+1-implied owner — **halide-CIMS only, a no-op in
+positive urea mode**. CLI toggles: `--no-pass2/3/4`; `--no-pass5` disables **both**
+Pass 5 and the Pass-6 ladder gap-fill.
 
 ---
 
