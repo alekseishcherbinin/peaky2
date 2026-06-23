@@ -98,6 +98,15 @@ Then, in Claude Code, ask in plain language — the skill triggers automatically
 Claude reads `SKILL.md`, picks the right reagent and parameters, runs the
 deterministic pipeline locally, and shows you the assignments / figures / report.
 
+**The mental model** (paste this if a fresh Claude needs orienting): *Mascope =
+data + scorer. Peaky = analysis. Claude = interface.* Mascope's `match_compounds`
+is the **only** scorer — Peaky enumerates candidate formulas, hands them to
+Mascope, and arbitrates; the chemistry gates are structural; **no LLM is in the
+assignment loop**, so every run is reproducible and auditable. Claude orchestrates
+(picks the reagent, runs the pipeline, reads results back) — it never does the
+chemistry. Heavy work runs on the **host Python** (which has `mascope-sdk`) via the
+Bash tool / `peaky` CLI — never transport peak tables through an MCP into context.
+
 ## Run it as a CLI (scripted)
 
 ```bash
@@ -134,7 +143,7 @@ Peaky is validated end-to-end on the **orange-peeling** CIMS experiment
 
 One ledger DataFrame (one row per peak; passes only fill/annotate), Mascope is the
 only scorer, chemistry gates are structural. Every change ships with a test, and the
-offline suite (850+ assertions across 31 files, no network) must stay green:
+offline suite (no network) must stay green:
 
 ```bash
 pytest tests/                        # or run any tests/test_*.py as a standalone script
@@ -142,8 +151,10 @@ pytest tests/                        # or run any tests/test_*.py as a standalon
 
 CI runs the suite on Python 3.11–3.13 with no credentials.
 
-- **How Peaky works** — the ledger model, pass sequence, data flow, and module
-  map: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** (start here).
+- **How Peaky works** — the ledger model, pass sequence, data flow, module map:
+  **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** (start here).
+- **Assignment explained** (for a scientist): **[docs/ASSIGNMENT.md](docs/ASSIGNMENT.md)**.
+- **Outputs** — every artifact, where it's stored, what it is: **[docs/OUTPUTS.md](docs/OUTPUTS.md)**.
 - **Claude-Code operating instructions** — reagents, flags, chemistry rules:
   **[SKILL.md](SKILL.md)**.
 - **Development history + open items**: **[docs/ROADMAP.md](docs/ROADMAP.md)**.

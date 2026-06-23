@@ -1,10 +1,11 @@
 # Peaky — Architecture
 
 This document explains **how Peaky works** for someone reading or extending the
-code. For *how to run it* see [`README.md`](../README.md) and
-[`QUICKSTART.md`](../QUICKSTART.md); for the Claude-Code operating instructions
-see [`SKILL.md`](../SKILL.md); for development history see
-[`docs/ROADMAP.md`](ROADMAP.md).
+code. Companion docs: [`README.md`](../README.md) (install + dev loop),
+[`QUICKSTART.md`](../QUICKSTART.md) (5-minute run), [`SKILL.md`](../SKILL.md)
+(Claude-Code operating instructions), [`ASSIGNMENT.md`](ASSIGNMENT.md) (what
+assignment produces, for a scientist), [`OUTPUTS.md`](OUTPUTS.md) (every artifact,
+where + what), and [`ROADMAP.md`](ROADMAP.md) (development history).
 
 ---
 
@@ -84,15 +85,25 @@ report                                  report.py / pdf — _ledger.csv, _assign
 
 ### Whole batch (`pipeline.run_batch`)
 
-A batch is many samples over time. Assigning one averaged spectrum would miss
-analytes that appear only briefly, so the batch path assigns a **representative
-subset** and merges:
+A batch is many samples over time. `match_compounds` scores against one real
+server sample, so assigning one averaged spectrum would miss analytes that appear
+only briefly. The batch path assigns a **subset of samples** and merges by m/z.
+Two selection strategies (both feed the identical assign → merge → report chain):
+
+- **`representative`** (default) — `sampling.select_representative_samples`: 5
+  evenly time-spaced samples + the max-TIC sample.
+- **`brightest`** (`--select brightest`) — `sampling.select_brightest_coverage_samples`:
+  bin *all* batch peaks by m/z and assign each significant bin's *brightest*
+  sample (greedy set-cover). Coverage tracks analyte signal, not a fixed time grid
+  — on reagent-CIMS data the max-TIC pick is dominated by the reagent ion and is
+  the brightest sample for a small fraction of analyte peaks. A coverage play, not
+  a speed play.
 
 ```
 batch + reagent
    │  pipeline.run_batch
    ▼
-sampling.select_representative_samples   THE RULE: 5 evenly time-spaced samples + the max-TIC sample
+sampling.select_*_samples                pick the sample subset (representative | brightest)
    │
    ▼
 assign each rep (assign.run)             per-file ledgers kept
@@ -174,24 +185,36 @@ negative- or positive-mode.
 
 ## 7. Reproducibility & provenance
 
-Reproducibility is a *construction*, not a claim:
+**The scientific content of a run is a pure function of its inputs.** Every
+figure's pixels, the ledger, and every cluster/Van-Krevelen table is byte-identical
+whenever you re-run the same data — *regardless of when you run it*. The **only**
+thing the run timestamp changes is the PDF cover's "generated" line, the **Report
+ID**, the run-folder name, and the `run_manifest.json` provenance. So a re-run
+reproduces the analysis exactly; only *which run it was* is stamped on top.
 
-- **One `when` per run.** `RunContext.when` (UTC) is the only clock the pipeline
-  reads. It names the run folder (`run_id = slug + YYYY-MM-DDTHHMMSSZ`) and is
-  stamped on the report cover.
-- **`SOURCE_DATE_EPOCH`.** The run driver exports `when` as `SOURCE_DATE_EPOCH`;
-  matplotlib stamps it (not `now()`) into PNG/PDF metadata and the xlsx writer
-  reads it via `cluster._resolve_when`. So two runs at the same `when` over the
-  same inputs are **byte-identical**, and a different time gives different bytes
-  (the stamp tracks the run, like the Report ID).
+How that's enforced:
+
+- **Fixed content epoch.** `pipeline.stamp_source_date_epoch()` pins
+  `SOURCE_DATE_EPOCH` to a constant (`CONTENT_EPOCH`, 1980-01-01Z), **not** the run
+  time. matplotlib reads it for PNG/PDF metadata and the xlsx writer reads it via
+  `cluster._resolve_when`, so the embedded timestamps are constant and the bytes
+  depend only on the data. No run-time value ever leaks into a figure or a data
+  table (the assignment xlsx carries no "generated" cell, by design).
+- **Run time as text only.** `RunContext.when` (UTC) names the run folder
+  (`run_id = slug + YYYY-MM-DDTHHMMSSZ`) and is rendered as *visible text* on the
+  PDF cover (the "generated" line + Report ID) — never through `SOURCE_DATE_EPOCH`.
+  A report PDF therefore differs run-to-run only because that visible text differs.
 - **`run_manifest.json`** (`provenance.py`) pins each run to its exact code
   (package + per-module version + content hash + git commit), input-data hash
   (`ts_sha1`), resolved config, and output hash (`merged_ledger_sha1`).
-- **`index.jsonl`** at the output root is the cross-run registry — one compact row
-  per run, loadable with `pandas.read_json(lines=True)` to find or diff runs.
+- **`index.jsonl`** at the `--out-dir` base (not inside the run folder) is the
+  cross-run registry — one compact row per run, loadable with
+  `pandas.read_json(lines=True)` to find or diff runs.
 
-Together: re-run the recorded commit on data with the recorded `ts_sha1` at the
-recorded `when` → the determinism contract guarantees the same bytes.
+The one genuine source of cross-run variation is the live `match_compounds` call
+(server-side), not Peaky. `test_determinism.py` locks the contract: two runs at
+different times over the same inputs → identical figure/xlsx/csv bytes, with the
+PDF differing only by its visible cover timestamp.
 
 ---
 
@@ -216,10 +239,11 @@ filename contract can't drift:
                         referenced, never copied)
 ```
 
-The canonical artifacts are `merged_ledger.csv` (the result) and
-`run_manifest.json` (the provenance anchor); both stay at the run root because
-several modules + the cross-run registry read them. See
-[`SKILL.md`](../SKILL.md#outputs) for the per-file (single-sample) schema.
+(`index.jsonl` — the cross-run registry — lives at the `--out-dir` base, *not*
+inside the run folder.) The canonical artifacts are `merged_ledger.csv` (the
+result) and `run_manifest.json` (the provenance anchor); both stay at the run root
+because several modules + the registry read them. **[OUTPUTS.md](OUTPUTS.md) is the
+full per-artifact reference** (batch + single-sample, one line each).
 
 ---
 
@@ -242,7 +266,8 @@ predictor), `reagents.py` / `profiles.py` (reagent library + per-reagent config)
 (mass-degeneracy), `tiers.py` (Identified/Candidate verdict), `plausibility.py`
 (QC), `assign.py` (orchestrator + `PassConfig`).
 
-**Batch** — `sampling.py` (THE RULE: representative subset), `assign_batch.py`
+**Batch** — `sampling.py` (sample selection: representative subset OR
+brightest-coverage), `assign_batch.py`
 (assign reps + offset-aware merge), `timeseries.py` (time-resolved disposition),
 `clustering.py` + `cluster.py` (correlation-cluster figures), `composition.py`
 (signal-weighted composition accounting).

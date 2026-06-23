@@ -7,12 +7,21 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased] — 0.4.0 (public-release refactor)
 
 A refactor pass preparing Peaky for the public `karsa-oy/peaky` repo: cleaner
-install, enforced reproducibility, organized outputs, and a design doc.
+install, content-stable reproducibility, organized outputs, a brightest-coverage
+batch mode, and a full design-doc set.
 
 ### Added
 - `docs/ARCHITECTURE.md` — the canonical design doc (ledger model, pass sequence,
   end-to-end data flow with diagram, reproducibility model, module map).
+  Companion docs `docs/ASSIGNMENT.md` (what assignment produces, for a scientist)
+  and `docs/OUTPUTS.md` (every artifact, where + what).
 - `CHANGELOG.md` (this file).
+- **Brightest-coverage batch selection** (`--select brightest`, the "bin-then-assign"
+  mode). Bins all batch peaks by m/z and assigns each significant bin's *brightest*
+  sample (greedy set-cover, `--coverage-target`/`--k-max`/`--height-floor`). Better
+  analyte coverage than the time-grid+max-TIC default (which a reagent-CIMS run's
+  reagent ion dominates); feeds the same assign → merge → report chain, so outputs
+  are unchanged. A coverage play, not a speed play. (`sampling.select_brightest_coverage_samples`.)
 - Legacy workspace-based Mascope server support (`io_mascope`): connects to older
   deployments where `/api/datasets` 404s, resolving workspaces/batches via the raw
   endpoints. Additive and gated — modern servers are unaffected.
@@ -31,14 +40,22 @@ install, enforced reproducibility, organized outputs, and a design doc.
 - Repository URL → `github.com/karsa-oy/peaky` (the public home).
 
 ### Fixed
-- **Reproducibility is now enforced, not just claimed.** The run driver exports the
-  run's `when` as `SOURCE_DATE_EPOCH` (`pipeline.stamp_source_date_epoch`) before any
-  rendering, so matplotlib stamps it into PNG/PDF metadata and the xlsx writer reads
-  it via `cluster._resolve_when`. Two runs over the same inputs at the same `when` are
-  now byte-identical across figures, PDF, and workbooks; a different `when` changes the
-  bytes (the stamp tracks the run, like the Report ID). The single-sample report's
-  "generated" cell honors the same variable. `test_determinism.py` now drives the real
-  helper and asserts byte-stability for all three artifact types.
+- **Reproducibility: content is a pure function of inputs; only the report timestamp
+  varies.** `pipeline.stamp_source_date_epoch()` pins `SOURCE_DATE_EPOCH` to a FIXED
+  content epoch (`CONTENT_EPOCH`, 1980-01-01Z), so matplotlib PNG/PDF metadata and the
+  openpyxl xlsx timestamps are constant — every figure's pixels, `merged_ledger.csv`,
+  the per-file/cluster csv, and the xlsx tables are byte-identical for identical input
+  data, **regardless of when the run happens**. Run time reaches output ONLY as visible
+  PDF-cover text (the "generated" line + Report ID), the run-folder name, and
+  `run_manifest.json`. The assignment xlsx's run-time "generated" cell was removed (it
+  was the only run-time leak into a data file), and `write_excel` is now post-processed
+  for byte-stability too. `test_determinism.py` asserts the contract: two runs at
+  different times over the same inputs → identical figure/xlsx/csv bytes, with the PDF
+  differing only by its visible cover timestamp.
+- **`run_batch` now runs the FULL pipeline.** `peaky.run_batch` pointed at the
+  assign-only `assign_batch.run` (no figures/report); it now maps to
+  `pipeline.run_batch` (assign → cluster → Van Krevelen → report). `run_assign_batch`
+  exposes the assign+merge half; `run_pipeline` aliases `run_batch`.
 - `run_manifest.json` stores the input time-series path relative to the run dir (or
   absolute when referenced externally) instead of a bare basename, so it stays
   reproducible when the input TS is referenced rather than copied.
