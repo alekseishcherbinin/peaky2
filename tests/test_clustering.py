@@ -59,12 +59,14 @@ with tempfile.TemporaryDirectory() as d:
           all(k in res for k in ("changing", "flat_clusters", "changers",
                                  "unassigned", "bin_minutes", "out_dir", "tag")))
     check("bin_minutes is a positive int", isinstance(res["bin_minutes"], int) and res["bin_minutes"] >= 1)
+    # tables -> tables/, figures -> figures/ (see paths.RunPaths)
     for fn in ("clusters_changing_T.csv", "clusters_flat_T.csv",
                "clusters_unassigned_T.csv", "channel_agreement_T.csv"):
-        check(f"wrote {fn}", os.path.exists(os.path.join(d, fn)))
-    check("wrote a changing-cluster figure png",
-          bool(list(Path(d).glob("clusters_changing_T_p*.png"))))
-    check("wrote the per-cluster workbook", os.path.exists(os.path.join(d, "clusters_changing_T.xlsx")))
+        check(f"wrote tables/{fn}", os.path.exists(os.path.join(d, "tables", fn)))
+    check("wrote a changing-cluster figure png under figures/",
+          bool(list(Path(d, "figures").glob("clusters_changing_T_p*.png"))))
+    check("wrote the per-cluster workbook under tables/",
+          os.path.exists(os.path.join(d, "tables", "clusters_changing_T.xlsx")))
 
 def test_all():
     assert FAIL == 0, f"{FAIL} checks failed"

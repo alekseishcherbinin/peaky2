@@ -26,6 +26,7 @@ import os
 import numpy as np
 import pandas as pd
 
+from . import paths as PT
 from . import profiles as P
 from . import sampling as SS
 
@@ -232,11 +233,13 @@ def run(peaks=None, *, batch: str | None = None, dataset: str | None = None,
     also guarantees the selected sample ids are valid for get_peaks — cached ids
     go stale / 404 when the server copy is renamed). `context` defaults to the
     reagent profile's context. Extra kwargs pass through to assign.run. Writes
-    per_file/<sid>_ledger.csv, merged_ledger.csv, jitter.csv, batch_summary.json."""
+    (see paths.RunPaths): merged_ledger.csv + batch_summary.json at the run root,
+    per_file/<sid>_ledger.csv, and tables/{selected_samples,jitter}.csv."""
     from . import assign as A
     from . import io_mascope as IO
 
     out_dir = os.path.expanduser(out_dir)
+    TAB = PT.run_paths(out_dir).ensure().tables    # .csv tables -> tables/
     pfdir = os.path.join(out_dir, "per_file")
     os.makedirs(pfdir, exist_ok=True)
 
@@ -253,7 +256,7 @@ def run(peaks=None, *, batch: str | None = None, dataset: str | None = None,
         sel = SS.select_representative_samples(peaks, n_time=n_time,
                                                include_max_tic=include_max_tic)
         sample_ids = sel["sample_item_id"].tolist()
-        sel.to_csv(os.path.join(out_dir, "selected_samples.csv"), index=False)
+        sel.to_csv(os.path.join(TAB, "selected_samples.csv"), index=False)
     log(f"[assign_batch] {prof.label} context={context!r}: "
         f"{len(sample_ids)} representative files -> {pfdir}")
 
@@ -286,7 +289,7 @@ def run(peaks=None, *, batch: str | None = None, dataset: str | None = None,
         from . import cleanup
         cleanup.prefer_amine_over_ammonium(merged, ts_peaks=ts_peaks, r_min=amine_r_min, log=log)
     merged.to_csv(os.path.join(out_dir, "merged_ledger.csv"), index=False)
-    jitter.to_csv(os.path.join(out_dir, "jitter.csv"), index=False)
+    jitter.to_csv(os.path.join(TAB, "jitter.csv"), index=False)
 
     summary = {
         "reagent": prof.name, "label": prof.label, "context": context,

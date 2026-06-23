@@ -137,8 +137,11 @@ pipeline assigns a **representative subset and merges by m/z**:
   — resolves the `profiles.ReagentProfile`, runs `assign.run` per selected file
   (keeps each `per_file/<sid>_ledger.csv`), then an **offset-aware merge** (`align`)
   - a file-to-file **jitter** table. Pass `ts_peaks` (the full-batch per-peak time
-    series) to enable the positive-mode NH4→amine gate below. Writes `merged_ledger.csv`,
-    `jitter*.csv`, `batch_summary.json`.
+    series) to enable the positive-mode NH4→amine gate below. Writes `merged_ledger.csv`
+    + `batch_summary.json` at the **run root**, per-file ledgers in `per_file/`, and
+    `selected_samples.csv` / `jitter.csv` in `tables/`. The run folder is organized by
+    `paths.RunPaths`: `.png`→`figures/`, `.csv`/`.xlsx`→`tables/`, the PDF→`report/`,
+    a live-fetched TS→`data/` (a TS passed by path is referenced, not copied).
 - IDs must be fetched FRESH from the live server (`io_mascope.fetch_batch_samples`,
   regex-escape the batch name) — cached `sample_item_id`s 404 when a server copy is
   renamed.

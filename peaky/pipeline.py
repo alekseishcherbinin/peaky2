@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 import pandas as pd
 
 from . import io_mascope as IO
+from . import paths as PT
 from . import profiles as P
 from . import sampling as SS
 from . import timeseries as TS
@@ -186,10 +187,14 @@ def generate_report(ctx: RunContext, ts, *, subject: str | None = None,
     stamp_source_date_epoch(ctx.when)
 
     if isinstance(ts, str):
-        ctx.ts_path = os.path.expanduser(ts)
+        ctx.ts_path = os.path.expanduser(ts)        # reference an existing parquet, never copy
         ts = pd.read_parquet(ctx.ts_path)
     elif ctx.ts_path is None:
-        ctx.ts_path = os.path.join(ctx.out_dir, f"{ctx.tag}_ts.parquet")
+        # ts was fetched live (no on-disk source) — keep ONE copy with the run, in
+        # data/, so the report/provenance can read it. (When the caller passed a
+        # parquet path, run_batch points ctx.ts_path at it instead of copying.)
+        ctx.ts_path = os.path.join(PT.run_paths(ctx.out_dir).ensure().data,
+                                   f"{ctx.tag}_ts.parquet")
         ts.to_parquet(ctx.ts_path)
 
     out: dict = {"ctx": ctx}
@@ -226,13 +231,17 @@ def run_batch(*, batch: str, dataset: str | None = None, reagent: str = "auto",
     the amine gate + clustering. Returns {ctx, assign, cluster, vk, report_pdf}."""
     from . import assign_batch as AB
 
+    ts_src = None
     if isinstance(ts, str):
-        ts = pd.read_parquet(os.path.expanduser(ts))
+        ts_src = os.path.expanduser(ts)            # an on-disk parquet we can reference
+        ts = pd.read_parquet(ts_src)
     if ts is None:
         log(f"[batch] fetching full-batch time series for {batch!r} ...")
         ts = load(batch=batch, dataset=dataset)
     prof = P.resolve(reagent, ts, config=config)
     ctx = make_run_context(base_out, batch, prof, when=when, dataset=dataset)
+    if ts_src:
+        ctx.ts_path = ts_src     # reference the caller's parquet; don't re-copy it into the run dir
     log(f"[batch] {ctx.run_id} -> {ctx.out_dir}")
 
     res = AB.run(batch=batch, dataset=dataset, reagent=prof.name,

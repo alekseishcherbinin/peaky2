@@ -434,9 +434,12 @@ def van_krevelen_batch(out_dir, ts, profile, *, merged=None, tag=None, label=Non
     """
     import os
 
+    from . import paths as PT
     from . import timeseries as TS
 
     OUT = os.path.expanduser(out_dir)
+    P = PT.run_paths(OUT).ensure()
+    FIG, TAB = P.figures, P.tables       # .png -> figures/, .csv -> tables/
     tag = tag or profile.name
     label = label or profile.label
     batch_name = batch_name or label
@@ -457,7 +460,7 @@ def van_krevelen_batch(out_dir, ts, profile, *, merged=None, tag=None, label=Non
     log(f"{tag}: {len(an)} organic analytes ({nchg} changing); bin={BIN_MIN}min")
     subj = f" · {subject}" if subject else ""
     render_van_krevelen(
-        an, f"{OUT}/van_krevelen_{tag}.png",
+        an, f"{FIG}/van_krevelen_{tag}.png",
         title=f"{label}{subj} — Van Krevelen ({len(an)} analytes, {nchg} changing)")
 
     # (2) FULL VK — EVERY assigned peak, coloured by composition (Si/F/halogen shown)
@@ -466,9 +469,9 @@ def van_krevelen_batch(out_dir, ts, profile, *, merged=None, tag=None, label=Non
     anf["fclass"] = anf["neutral_formula"].map(full_class)
     log(f"{tag} FULL: {len(anf)} assigned neutrals; classes {anf['fclass'].value_counts().to_dict()}")
     render_van_krevelen_full(
-        anf, f"{OUT}/van_krevelen_full_{tag}.png",
+        anf, f"{FIG}/van_krevelen_full_{tag}.png",
         title=f"Van Krevelen — {batch_name}   ({len(anf)} assigned compounds)")
     anf[["neutral_formula", "adduct", "tier", "oc", "hc", "fclass", "median_cps", "cv", "changing"]] \
-        .to_csv(f"{OUT}/van_krevelen_full_{tag}.csv", index=False)
-    log(f"wrote {OUT}/van_krevelen_full_{tag}.png")
+        .to_csv(f"{TAB}/van_krevelen_full_{tag}.csv", index=False)
+    log(f"wrote {FIG}/van_krevelen_full_{tag}.png")
     return {"organic": an, "full": anf, "bin_minutes": BIN_MIN, "out_dir": OUT, "tag": tag}

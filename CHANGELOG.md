@@ -45,6 +45,12 @@ install, enforced reproducibility, organized outputs, and a design doc.
 - Documented `cleanup.reclaim_envelope_tails` as a known no-op on real data (the leak it
   targets is absorbed upstream); kept but no longer implicitly trusted.
 
-<!-- Filled in as the remaining phases land:
-### Changed (outputs)     — run dir organized into figures/ tables/ report/; input time-series no longer copied per run.
--->
+### Changed (outputs)
+- **Run folders are organized into subdirectories.** A new `paths.RunPaths` is the single
+  source of truth for the layout, shared by the writers and the report reader so their
+  filename contract can't drift: `.png` → `figures/`, `.csv`/`.xlsx` → `tables/`, the PDF
+  → `report/`. `merged_ledger.csv`, `run_manifest.json`, `batch_summary.json`, and
+  `per_file/` stay at the run root (read by several modules + the cross-run registry).
+- **The input time-series is no longer copied into every run.** A parquet passed by path
+  is referenced in place; only a live-fetched series is persisted once, to `data/`. This
+  removes a ~40 MB duplicate per run.

@@ -198,11 +198,28 @@ recorded `when` → the determinism contract guarantees the same bytes.
 ## 8. Outputs
 
 A batch run writes one **versioned folder** per run (`<slug>_<timestamp>Z/`) so a
-re-run never overwrites a previous one. It contains the merged ledger, per-file
-ledgers, cluster figures + tables, the Van Krevelen, the PDF report, the run
-manifest, and the batch summary. The canonical artifacts are
-`merged_ledger.csv` (the result) and `run_manifest.json` (the provenance anchor).
-See [`SKILL.md`](../SKILL.md#outputs) for the per-file schema.
+re-run never overwrites a previous one. The layout is the single source of truth
+in `paths.py` (`RunPaths`), shared by the writers and the report reader so their
+filename contract can't drift:
+
+```
+<run>/
+  merged_ledger.csv     the result (provenance anchor)        — ROOT
+  run_manifest.json     reproducibility manifest              — ROOT
+  batch_summary.json    counts / per-file offsets             — ROOT
+  per_file/             per-sample ledgers
+  figures/              all .png (cluster panels, GKA, Van Krevelen)
+  tables/               all .csv / .xlsx (cluster tables, jitter, channel QC)
+  report/               the PDF report (+ compressed companion)
+  data/                 a fetched time-series, kept with the run (only when no
+                        on-disk source exists — a parquet passed by path is
+                        referenced, never copied)
+```
+
+The canonical artifacts are `merged_ledger.csv` (the result) and
+`run_manifest.json` (the provenance anchor); both stay at the run root because
+several modules + the cross-run registry read them. See
+[`SKILL.md`](../SKILL.md#outputs) for the per-file (single-sample) schema.
 
 ---
 
