@@ -56,7 +56,7 @@ run(sample_id, context='ambient-air', cfg=None, use_cache=True,
     do_pass2/3/4/5=True, ts_peaks=None, adducts=None, log=print,
     checkpoint_dir=None) -> dict
 ```
-Chains: fetch peaks → `new_ledger` → isotope prescan → reagent labeling → pass 0 → pass 1 → calibrate → relabel → iso-envelope (pre-pass-4) → demote_carbon/massgate → pass 2 → pass 3 → pass 4 → pass 5 → reagent sweep → audits → iso-envelope (2nd) → composites → pass 6 (ladder) → iso-envelope (3rd) → cleanup → siloxane → degeneracy → tiers → fluorine demotion → optional time-series → `validate` + `stats`. Returns `{ledger, stats, summaries, prescan, problems, module_versions, module_hashes, context, sample_id}`.
+Chains: fetch peaks → `new_ledger` → isotope prescan → reagent labeling → pass 0 → pass 1 → calibrate → relabel → iso-envelope (pre-pass-4) → demote_carbon/massgate → pass 2 → pass 3 → pass 4 → pass 5 → reagent sweep → audits → iso-envelope (2nd) → composites → pass 6 (ladder) → iso-envelope (3rd) → cleanup → siloxane → degeneracy → tiers → fluorine demotion → carbon-cluster demotion → reference-list rescue-verify → optional time-series → `validate` + `stats`. Returns `{ledger, stats, summaries, prescan, problems, module_versions, module_hashes, context, sample_id}`.
 
 ---
 
@@ -108,10 +108,11 @@ A **pure function** selecting a single best M0 owner per observed peak from the 
 **Per-peak computation:**
 1. Filter anchors: `is_base=True ∧ sample_peak_id notna ∧ ion_score notna` (lines 258–262).
 2. `raw_score = min(ion_score, compound_score)`.
-3. `eff_score = raw_score − penalty − adduct_penalty − cal_penalty` where:
+3. `eff_score = raw_score − penalty − adduct_penalty − cal_penalty + reflist_prior` where:
    - **penalty** = `_evidence_penalty(...)` (lines 292–314): the complexity prior, **waived** for a heteroatom only if its diagnostic isotope (37Cl/81Br/34S) is Mascope-confirmed AND it is not the reagent element. Monoisotopic elements (N, P, F, Si, I) keep the plain prior. An unconfirmed Cl/Br adds the gate penalty `het_iso_penalty_halogen=0.30` on top of the prior; unconfirmed S adds `het_iso_penalty_S=0.12`.
    - **adduct_penalty** = `minor_channel_penalty=0.12` if the winning adduct is in `minor_channels` (`[M+CO3]-`, `[M+O2]-`, `[M]-.`) (line 335).
    - **cal_penalty** = `0` if uncalibrated, else `max(0, (z − cal_z_accept)) · CAL_ARB_WEIGHT` with `CAL_ARB_WEIGHT=0.04` per σ (line 149, `_cal_offtrend` line 332).
+   - **reflist_prior** (the SELECTION PRIOR) = `+reflist_prior` (default `0.04`) ADDED when `compound_formula ∈ cfg.reflist_formulas` — the union of the run's context-active reference peaklists (`reflists.active_lists`, set by `assign.run` from `reflists_active`). A small tie-break: it flips a near-tie (gap < the 0.05 margin) toward a published HOM / known contaminant over a mass-coincidence monster, but **cannot override a clearly-better fit**. Empty set → no-op (the default, so assignment is unchanged unless a list is unlocked).
 4. **Winner** = highest eff_score; **tied** if `(winner_eff − runner_eff) < 0.05` (`TIE_MARGIN`, line 345).
 5. **Alternatives**: up to 6 runners-up recorded with `eff_score`, `raw_score`, `ppm`.
 
@@ -276,7 +277,7 @@ Isotope pairs + series chains, DBE-only plausibility (no `match_compounds`, just
 
 ### 4.1 Arbitration (recap of §2.5)
 
-Per peak: `eff_score = raw_score − complexity/iso penalty − minor-channel penalty − calibration off-trend penalty`. Winner = max eff_score; tied if margin `< 0.05`. The isotope-gating gotcha: an unconfirmed heteroatom pays BOTH the prior AND the gate (e.g. S without 34S pays 0.08 + 0.12 = 0.20); a confirmed one pays zero; a reagent element keeps the prior even when ion-confirmed (covalent vs cluster ambiguity), with `_prefer_adduct_reading` recovering the cluster reading post-arbitration.
+Per peak: `eff_score = raw_score − complexity/iso penalty − minor-channel penalty − calibration off-trend penalty + reference-list prior`. Winner = max eff_score; tied if margin `< 0.05`. The isotope-gating gotcha: an unconfirmed heteroatom pays BOTH the prior AND the gate (e.g. S without 34S pays 0.08 + 0.12 = 0.20); a confirmed one pays zero; a reagent element keeps the prior even when ion-confirmed (covalent vs cluster ambiguity), with `_prefer_adduct_reading` recovering the cluster reading post-arbitration. The **reference-list prior** (`+0.04` when the neutral is on an active reference peaklist, §8.4) is a tie-break only — enough to flip a near-tie toward a known literature/contaminant formula, never enough to beat a clearly-better fit.
 
 ### 4.2 Tier classification (tiers.py)
 
@@ -335,6 +336,19 @@ A bromomethane reagent-precursor fragment (CH₂Br₂ → CHBr₂⁻, m/z 170.84
 ### 5.6 Fluorine demotion (cleanup.py:466–502)
 
 `demote_unconfirmed_fluorine(f_min=4)`: demotes M0s on unconfirmed high fluorine (`F ≥ 4`) from Identified → Candidate + sets `below_assignability` (19F is monoisotopic, no twin). Exempts known PFCAs (`CnH F(2n-1) O2`, n≥2) and any fit with Cl/Br/S anchors. **Must run after `apply_tiers`** so demotion sticks.
+
+### 5.6b Carbon-cluster demotion (`demote_implausible_carbon`)
+
+`demote_implausible_carbon(hc_max=0.35)`: the F-free counterpart of the fluorine demotion. An M0 whose neutral is **F-free with H/C below 0.35** (e.g. C₂₇H₈ at 0.30, C₃₆H₆O at 0.17) is a high-mass coincidence, not a real organic-aerosol molecule (real SOA sits at H/C ≈ 1–2) → Identified → Candidate + `below_assignability`. Same arithmetic as the plausibility "carbon-rich" flag, applied to the tier so the demotion is consistent; the fluorine-rich low-H/C case is left to `demote_unconfirmed_fluorine`. **Runs after `apply_tiers`** (called by `assign.run` right after the fluorine demotion).
+
+### 5.6c Reference-list rescue-verify (`reflists.rescue_unexplained_by_reflist`)
+
+Runs **last** in `assign.run` (after the demotions, so it sets its own tier). Matches the still-`unexplained` residual **by mass** against the run's active reference peaklists, then SCORES those specific formulas with the server (`match_compounds`) — turning a literature lead into a verified ID or a refutation. Decision per matched peak (mass gate: server `ion_score ≥ tau_low` AND on-cal `z ≤ cal_z_accept`):
+- **isotope-confirmed** → commit literature-anchored M0, tier Identified, `confidence="Good (literature)"`;
+- **too dim to confirm** (the predicted ¹³C M+1 `0.011·nC·height` falls below `height_cutoff`, so no satellite *could* show) → commit a low-quality Candidate + `below_assignability`, `confidence="Candidate (literature, dim)"` — the lead is never lost back to `unexplained` (the small-peak rule);
+- **bright enough but isotopes absent**, or off-cal / poor score → **left unexplained** (a real mass coincidence).
+
+Soft and provenance-tagged (every commit records the source list); only `ROLE_UNEXPLAINED` peaks are touched, so it never overrides an existing assignment. Active only when `reflists_active` is supplied (the batch pipeline resolves it from metadata); a no-op otherwise.
 
 ### 5.7 Amine re-read (cleanup.py:522–618, uronium-only)
 
@@ -425,7 +439,14 @@ Context caps always win over family expansion (e.g. ambient `max_Si=1` clamps an
 
 ### 8.4 Reference lists (reflists.py)
 
-`load_catalog(directory)` loads packaged `*.json` peaklists into `{id: ReferenceList}`. `active_lists(catalog, context_tags)` returns `always_active` lists + any whose `applies_to_contexts` intersect metadata-inferred tags (polarity NOT filtered — neutral formulas transfer across reagent ion forms). `match_assigned` corroborates assigned neutrals (no rejection); `match_by_mass(tol_ppm=5.0)` rescues unexplained peaks by mass under reagent adducts (LEADS, not assignments).
+`load_catalog(directory)` loads packaged `*.json` peaklists into `{id: ReferenceList}` (self-describing: id/system/label/data_version/references/provenance/`always_active`/`applies_to_contexts`, `species[{formula, conditions, radical}]`). `resolve_context_tags(*texts)` infers experimental-context tags from run metadata (batch name / label) via `CONTEXT_KEYWORDS` — the "unlock with metadata" step. `active_lists(catalog, context_tags)` returns `always_active` lists (e.g. lab contaminants) + any whose `applies_to_contexts` intersect the tags (polarity NOT filtered — neutral formulas transfer across reagent ion forms). Current lists: `monoterpene_hom_kang2024` (830 HOM, context-gated) + `contaminants_keller2008` (59 organic neutrals, always-active).
+
+A reference list is used in **three** places, all soft and provenance-tagged (a list is never a measurement and never overrides an isotope-scored Identified):
+1. **Selection prior** (`arbitrate`, §2.5/§4.1) — a candidate neutral on an active list gets a `+0.04` tie-break in `eff_score`. `assign.run` sets `cfg.reflist_formulas` from `reflists_active`.
+2. **Rescue-verify** (`rescue_unexplained_by_reflist`, §5.6c) — match `unexplained` peaks by mass, score the matched formula with the server, and commit (confirmed → M0; too-dim → tentative Candidate; else leave). The assign-time mass→score→commit path. `match_by_mass(tol_ppm)` is the matcher.
+3. **Report annotation** (pdf_report) — `match_assigned` corroborates assigned Candidate neutrals by formula; `match_by_mass` lists unexplained leads on the "Reference-list corroboration & rescue" page + `tables/reflist_matches_*.csv`. Read-only, offline, deterministic.
+
+`assign_batch.run` resolves the active lists once from batch metadata and passes `reflists_active` to every per-sample `assign.run` (enabling 1 + 2); the report (3) re-resolves them at build time.
 
 ### 8.5 Plausibility (plausibility.py)
 
@@ -475,11 +496,11 @@ Context caps always win over family expansion (e.g. ambient `max_Si=1` clamps an
 | `contexts.py` | ContextProfile (Van Krevelen windows, heteroatom caps, grid bounds, pass3 families), filter_by_profile, classify_compound, contaminant family budgets |
 | `reagents.py` | Cluster-ion library (isotopologue-enumerated), `label_reagents`, reagent auto-inference |
 | `profiles.py` | ReagentProfile (channels, normaliser, context); register / load_config / resolve (auto-detect) |
-| `reflists.py` | Curated reference peaklists; corroboration (`match_assigned`) and mass-rescue (`match_by_mass`) |
+| `reflists.py` | Curated reference peaklists + the catalog loader/context-unlock; the **selection prior** set, the **rescue-verify** pass (`rescue_unexplained_by_reflist`), report corroboration (`match_assigned`) and mass-match (`match_by_mass`) |
 | `plausibility.py` | Candidate-tier scrutiny flags (heteroatom coincidence, carbon-rich, wrong-mode halogen) |
 | `tiers.py` | Tier classification (Identified / Candidate / below-assignability), independent re-calibration, degeneracy demotion |
 | `degeneracy.py` | Cross-family ion-density audit and heteroatom-type counting |
-| `cleanup.py` | Pass-7 residual reclassification: ringing artifacts, bromide clusters, isotope-gated recovery, satellite/envelope reclaim, fluorine demotion, amine re-read |
+| `cleanup.py` | Pass-7 residual reclassification: ringing artifacts, bromide clusters, reagent-halocarbon relabel, isotope-gated recovery, satellite/envelope reclaim, fluorine demotion, carbon-cluster demotion, amine re-read |
 | `isotopes.py` | Per-atom isotope-distribution convolution → predicted envelope `(dmass, rel, label)` |
 | `assign_batch.py` | Per-file assignment + offset-aware m/z merge into the merged ledger; jitter report |
 | `sampling.py` | Sample selection: time-grid (5 + max-TIC) and brightest-coverage |
