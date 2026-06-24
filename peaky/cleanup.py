@@ -539,6 +539,50 @@ def demote_implausible_carbon(ledger: pd.DataFrame, *, hc_max: float = HC_CARBON
     return {"c_demoted": n}
 
 
+# anion channels need a functional group: [M-H]- an acidic proton, the cluster
+# adducts ([M+Br]-/[M+CO3]-/[M+NO3]-/...) an H-bond donor / polar site. Electron
+# attachment [M]-. is the ONLY negative channel a heteroatom-free species can use.
+_EA_ADDUCTS = {"[M]-.", "[M]-", "[M+O2]-"}
+
+
+def demote_implausible_ionization(ledger: pd.DataFrame, *, log=print) -> dict:
+    """Demote M0s whose ionization is chemically impossible for the assigned neutral.
+    A PURE HYDROCARBON (no O/N/S/P/halogen/Si) has no acidic proton to lose and no
+    H-bond donor / polar site to anchor an anion cluster, so it cannot ionize as
+    [M-H]- or as a halide/carbonate/nitrate/sulfate/carboxylate cluster — regardless
+    of how well the exact mass + isotope pattern fit (the pattern of a C/H ion just
+    confirms the C count). Such an assignment is a mass coincidence (e.g. C7H10/C7H12
+    [M-H]-, C2H2 [M+CO3]-): Identified->Candidate + below_assignability. Electron
+    attachment ([M]-./[M+O2]-) is exempt (the one route an electron-poor hydrocarbon
+    has). Negative-mode anion channels only; positive adducts are left alone."""
+    n = 0
+    has_ba = "below_assignability" in ledger.columns
+    target = (ledger.index[ledger["role"] == L.ROLE_M0]
+              if "role" in ledger.columns else ledger.index)
+    for i in target:
+        cnt = C.parse_formula(str(ledger.at[i, "neutral_formula"] or ""))
+        if cnt.get("C", 0) < 1:
+            continue
+        hetero = sum(cnt.get(e, 0) for e in ("O", "N", "S", "P", "F", "Cl", "Br", "I", "Si"))
+        if hetero > 0:
+            continue                                 # has a functional-group atom
+        ad = str(ledger.at[i, "adduct"])
+        if not ad.endswith("-") or ad in _EA_ADDUCTS:
+            continue                                 # only FG-requiring anion channels
+        if str(ledger.at[i, "tier"]) == "Identified":
+            ledger.at[i, "tier"] = "Candidate"
+        if has_ba:
+            ledger.at[i, "below_assignability"] = True
+        if "commentary" in ledger.columns:
+            note = (f"pure hydrocarbon via {ad}: no acidic proton / H-bond site to "
+                    "ionize -- implausible (mass coincidence)")
+            prev = str(ledger.at[i, "commentary"] or "")
+            ledger.at[i, "commentary"] = (prev + "; " + note) if prev and prev != "nan" else note
+        n += 1
+    log(f"[cleanup] demoted {n} implausible-ionization M0 (heteroatom-free via anion channel)")
+    return {"ionization_demoted": n}
+
+
 # ---- reagent-precursor / brominated-background halocarbons -----------------
 # A bromomethane reagent-precursor fragment (CH2Br2 -> CHBr2-, m/z 170.845) is
 # MASS-DEGENERATE with an absurd bare-element + reagent-cluster reading (neutral

@@ -198,6 +198,25 @@ check("carbon demote: normal C10H16O4 kept",
 check("carbon demote: F-rich skeleton NOT touched here (F-free rule; F-demote owns it)",
       not bool(ledc.loc[3, "below_assignability"]))
 
+# ---- implausible-ionization demote (heteroatom-free via anion channel) ----
+ledi = pd.DataFrame([
+    dict(role="M0", neutral_formula="C7H10",   adduct="[M-H]-",   tier="Identified", commentary="", below_assignability=False),  # HC deprotonation
+    dict(role="M0", neutral_formula="C2H2",    adduct="[M+CO3]-", tier="Identified", commentary="", below_assignability=False),  # HC carbonate cluster
+    dict(role="M0", neutral_formula="C10H16",  adduct="[M+Br]-",  tier="Candidate",  commentary="", below_assignability=False),  # HC bromide adduct
+    dict(role="M0", neutral_formula="C6H12O6", adduct="[M-H]-",   tier="Identified", commentary="", below_assignability=False),  # has O -> keep
+    dict(role="M0", neutral_formula="C7H10",   adduct="[M]-.",    tier="Identified", commentary="", below_assignability=False),  # electron attach -> exempt
+])
+outi = CU.demote_implausible_ionization(ledi, log=lambda *a: None)
+check("ionization demote: 3 heteroatom-free via FG-requiring anion channels", outi == {"ionization_demoted": 3}, outi)
+check("ionization demote: C7H10 [M-H]- -> Candidate + below_assignability",
+      ledi.loc[0, "tier"] == "Candidate" and bool(ledi.loc[0, "below_assignability"]))
+check("ionization demote: C2H2 [M+CO3]- demoted",
+      ledi.loc[1, "tier"] == "Candidate" and bool(ledi.loc[1, "below_assignability"]))
+check("ionization demote: oxygenated C6H12O6 [M-H]- kept",
+      ledi.loc[3, "tier"] == "Identified" and not bool(ledi.loc[3, "below_assignability"]))
+check("ionization demote: electron-attachment [M]-. exempt",
+      ledi.loc[4, "tier"] == "Identified" and not bool(ledi.loc[4, "below_assignability"]))
+
 # ---- reagent-precursor / brominated-background halocarbon relabel ----
 ledh = mk([("chbr2", 170.8451, 2e2), ("dbaa", 214.8349, 7e2), ("real", 250.10, 1e4)])
 for pid, neutral, adduct, ionf in [("chbr2", "C", "[M+HBr+Br]-", "CHBr2-"),       # bare-C mis-read

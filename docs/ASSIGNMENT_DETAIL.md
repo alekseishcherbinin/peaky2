@@ -56,7 +56,7 @@ run(sample_id, context='ambient-air', cfg=None, use_cache=True,
     do_pass2/3/4/5=True, ts_peaks=None, adducts=None, log=print,
     checkpoint_dir=None) -> dict
 ```
-Chains: fetch peaks → `new_ledger` → isotope prescan → reagent labeling → pass 0 → pass 1 → calibrate → relabel → iso-envelope (pre-pass-4) → demote_carbon/massgate → pass 2 → pass 3 → pass 4 → pass 5 → reagent sweep → audits → iso-envelope (2nd) → composites → pass 6 (ladder) → iso-envelope (3rd) → cleanup → siloxane → degeneracy → tiers → fluorine demotion → carbon-cluster demotion → reference-list rescue-verify → optional time-series → `validate` + `stats`. Returns `{ledger, stats, summaries, prescan, problems, module_versions, module_hashes, context, sample_id}`.
+Chains: fetch peaks → `new_ledger` → isotope prescan → reagent labeling → pass 0 → pass 1 → calibrate → relabel → iso-envelope (pre-pass-4) → demote_carbon/massgate → pass 2 → pass 3 → pass 4 → pass 5 → reagent sweep → audits → iso-envelope (2nd) → composites → pass 6 (ladder) → iso-envelope (3rd) → cleanup → siloxane → degeneracy → tiers → fluorine demotion → carbon-cluster demotion → ionization-plausibility demotion → reference-list rescue-verify → optional time-series → `validate` + `stats`. Returns `{ledger, stats, summaries, prescan, problems, module_versions, module_hashes, context, sample_id}`.
 
 ---
 
@@ -341,7 +341,11 @@ A bromomethane reagent-precursor fragment (CH₂Br₂ → CHBr₂⁻, m/z 170.84
 
 `demote_implausible_carbon(hc_max=0.35)`: the F-free counterpart of the fluorine demotion. An M0 whose neutral is **F-free with H/C below 0.35** (e.g. C₂₇H₈ at 0.30, C₃₆H₆O at 0.17) is a high-mass coincidence, not a real organic-aerosol molecule (real SOA sits at H/C ≈ 1–2) → Identified → Candidate + `below_assignability`. Same arithmetic as the plausibility "carbon-rich" flag, applied to the tier so the demotion is consistent; the fluorine-rich low-H/C case is left to `demote_unconfirmed_fluorine`. **Runs after `apply_tiers`** (called by `assign.run` right after the fluorine demotion).
 
-### 5.6c Reference-list rescue-verify (`reflists.rescue_unexplained_by_reflist`)
+### 5.6c Ionization-plausibility demotion (`demote_implausible_ionization`)
+
+A neutral can only be detected on a channel its chemistry supports: `[M-H]-` needs an **acidic proton**, the anion-cluster adducts (`[M+Br]-`/`[M+CO3]-`/`[M+NO3]-`/`[M+HSO4]-`/`[M+CHO2]-`/…) need an **H-bond donor / polar site**. A **pure hydrocarbon** (no O/N/S/P/halogen/Si) has neither, so it cannot ionize on these channels — a high exact-mass + isotope score on a C/H ion just confirms the carbon count, not a real analyte. Such M0s (e.g. C₇H₁₀/C₇H₁₂ `[M-H]-`, C₂H₂ `[M+CO3]-`) → Identified → Candidate + `below_assignability`. **Electron attachment (`[M]-.`/`[M+O2]-`) is exempt** — the one route a heteroatom-free, electron-poor species has. Negative-mode anion channels only. **Runs after `apply_tiers`**, between the carbon-cluster demotion and rescue-verify.
+
+### 5.6d Reference-list rescue-verify (`reflists.rescue_unexplained_by_reflist`)
 
 Runs **last** in `assign.run` (after the demotions, so it sets its own tier). Matches the still-`unexplained` residual **by mass** against the run's active reference peaklists, then SCORES those specific formulas with the server (`match_compounds`) — turning a literature lead into a verified ID or a refutation. Decision per matched peak (mass gate: server `ion_score ≥ tau_low` AND on-cal `z ≤ cal_z_accept`):
 - **isotope-confirmed** → commit literature-anchored M0, tier Identified, `confidence="Good (literature)"`;

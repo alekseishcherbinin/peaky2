@@ -300,6 +300,9 @@ def run(sample_id: str, context: str = "ambient-air", *,
     # flag): an F-free skeleton with H/C below the floor (e.g. C27H8) is a high-mass
     # coincidence, not a molecule -> Candidate + below_assignability.
     cleanup.demote_implausible_carbon(led, log=log)
+    # ionization-plausibility: a pure hydrocarbon can't deprotonate or anchor an
+    # anion cluster -> demote heteroatom-free M0 on [M-H]-/[M+Br]-/[M+CO3]-/... .
+    cleanup.demote_implausible_ionization(led, log=log)
     # RESCUE-VERIFY (last, post-tiering so it sets its own tier): match the still-
     # unexplained residual by mass to active reference peaklists and SCORE those
     # formulas with the server -- isotope-confirmed -> literature-anchored M0;
