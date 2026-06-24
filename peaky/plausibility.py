@@ -54,8 +54,11 @@ def implausible(neutral_formula: str, *, tier: str | None = None,
         return f"N{n}, O/C {oc:.1f} (heteroatom coincidence)"
     if n >= N_VERY_HIGH and o >= O_HIGH:
         return f"N{n}O{o} (heteroatom coincidence)"
-    if f >= F_HIGH:           # heavily fluorinated: F is monoisotopic (no confirming twin)
-        return f"F{f}, no isotope twin"
+    if f >= F_HIGH:           # heavily fluorinated: 19F is 100% monoisotopic
+        # NB any 13C/81Br satellites the row carries confirm the CARBON count / the
+        # adduct halogen, NOT the fluorine -- 19F has no heavier stable isotope, so
+        # the F COUNT is never isotope-confirmable (do NOT say "no isotope twin").
+        return f"F{f}: 19F monoisotopic, fluorine count not isotope-confirmable"
     if f == 0 and hc < HC_FLOOR:     # genuine carbon-rich skeleton (F not displacing H)
         return f"H/C {hc:.2f} (carbon-rich)"
     if polarity == "+" and (br > 0 or cl > 0):
