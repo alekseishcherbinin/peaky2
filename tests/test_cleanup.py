@@ -182,6 +182,22 @@ check("Cl-anchored F kept; low-F kept",
       ledf.loc[3, "tier"] == "Identified" and ledf.loc[4, "tier"] == "Identified")
 
 
+# ---- implausibly carbon-rich demote ----
+ledc = pd.DataFrame([
+    dict(role="M0", neutral_formula="C27H8",    tier="Candidate",  commentary="", below_assignability=False),  # H/C 0.30
+    dict(role="M0", neutral_formula="C36H6O",   tier="Identified", commentary="", below_assignability=False),  # H/C 0.17
+    dict(role="M0", neutral_formula="C10H16O4", tier="Identified", commentary="", below_assignability=False),  # H/C 1.6 keep
+    dict(role="M0", neutral_formula="C11H6F16", tier="Candidate",  commentary="", below_assignability=False),  # F-rich, not C
+])
+outc = CU.demote_implausible_carbon(ledc, log=lambda *a: None)
+check("carbon demote: only the F-free low-H/C clusters (C27H8, C36H6O)", outc == {"c_demoted": 2}, outc)
+check("carbon demote: C36H6O Identified -> Candidate + below_assignability",
+      ledc.loc[1, "tier"] == "Candidate" and bool(ledc.loc[1, "below_assignability"]))
+check("carbon demote: normal C10H16O4 kept",
+      ledc.loc[2, "tier"] == "Identified" and not bool(ledc.loc[2, "below_assignability"]))
+check("carbon demote: F-rich skeleton NOT touched here (F-free rule; F-demote owns it)",
+      not bool(ledc.loc[3, "below_assignability"]))
+
 # ---- reagent-precursor / brominated-background halocarbon relabel ----
 class _Br:
     name = "Br"

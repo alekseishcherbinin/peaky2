@@ -502,6 +502,43 @@ def demote_unconfirmed_fluorine(ledger: pd.DataFrame, *, f_min: int = F_DEMOTE_M
     return {"f_demoted": n}
 
 
+HC_CARBON_MAX = 0.35   # H/C below this (F-free) -> implausibly carbon-rich skeleton
+
+
+def demote_implausible_carbon(ledger: pd.DataFrame, *, hc_max: float = HC_CARBON_MAX,
+                              log=print) -> dict:
+    """Demote M0 assignments resting on an implausibly carbon-rich skeleton: H/C
+    below `hc_max` with NO fluorine (fluorine-rich low H/C is the F-monster case,
+    handled by demote_unconfirmed_fluorine). A bare carbon cluster such as C27H8 /
+    C36H6O is a high-mass mass-coincidence, not a real organic-aerosol molecule
+    (real SOA sits at H/C ~1-2). Demote Identified->Candidate and flag
+    below_assignability. F-free, C>=2 only. Same arithmetic as the plausibility
+    'carbon-rich' flag, applied to the tier so the demotion is consistent."""
+    n = 0
+    has_ba = "below_assignability" in ledger.columns
+    target = (ledger.index[ledger["role"] == L.ROLE_M0]
+              if "role" in ledger.columns else ledger.index)   # merged ledger has no role col
+    for i in target:
+        cnt = C.parse_formula(str(ledger.at[i, "neutral_formula"] or ""))
+        nc = cnt.get("C", 0)
+        if nc < 2 or cnt.get("F", 0) > 0:
+            continue
+        hc = cnt.get("H", 0) / nc
+        if hc >= hc_max:
+            continue
+        if str(ledger.at[i, "tier"]) == "Identified":
+            ledger.at[i, "tier"] = "Candidate"
+        if has_ba:
+            ledger.at[i, "below_assignability"] = True
+        if "commentary" in ledger.columns:
+            note = f"implausibly carbon-rich (H/C {hc:.2f}, F-free) -- likely mass coincidence"
+            prev = str(ledger.at[i, "commentary"] or "")
+            ledger.at[i, "commentary"] = (prev + "; " + note) if prev and prev != "nan" else note
+        n += 1
+    log(f"[cleanup] demoted {n} implausibly-carbon-rich M0 (H/C<{hc_max}, F-free)")
+    return {"c_demoted": n}
+
+
 # ---- reagent-precursor / brominated-background halocarbons -----------------
 # A bromomethane reagent-precursor fragment (CH2Br2 -> CHBr2-, m/z 170.845) is
 # MASS-DEGENERATE with an absurd bare-element + reagent-cluster reading (neutral

@@ -1109,6 +1109,29 @@ s_ope1 = P.run_pass0_known(None, "SID", led_ope1, PROF_URO, ACFG,
 check("pass0 refuses a single-channel organophosphate (no cross-channel support)",
       s_ope1["committed"] == 0, s_ope1)
 
+# ---------- selection prior: a reference-list neutral wins a near-tie ----------
+sp = pd.DataFrame([
+    iso_row(sample_peak_id="Z", compound_formula="C8H12O4", compound_score=0.88,
+            ion_formula="C8H11O4-", ion_score=0.88, ppm_error=0.2),       # not listed
+    iso_row(sample_peak_id="Z", compound_formula="C10H16O5", compound_score=0.86,
+            ion_formula="C10H15O5-", ion_score=0.86, ppm_error=0.2),      # listed HOM
+])
+check("no prior: higher raw wins (C8H12O4)",
+      P.arbitrate(sp, P.PassConfig())["winners"].iloc[0]["neutral"] == "C8H12O4")
+cfg_sp = P.PassConfig(); cfg_sp.reflist_formulas = frozenset({"C10H16O5"})
+check("reflist prior breaks the near-tie toward the listed HOM",
+      P.arbitrate(sp, cfg_sp)["winners"].iloc[0]["neutral"] == "C10H16O5")
+# but the prior must NOT override a clear winner (gap 0.12 > prior 0.04)
+sp2 = pd.DataFrame([
+    iso_row(sample_peak_id="Y", compound_formula="C8H12O4", compound_score=0.92,
+            ion_formula="C8H11O4-", ion_score=0.92, ppm_error=0.2),
+    iso_row(sample_peak_id="Y", compound_formula="C10H16O5", compound_score=0.80,
+            ion_formula="C10H15O5-", ion_score=0.80, ppm_error=0.2),
+])
+check("reflist prior does NOT override a clear winner (gap 0.12 > 0.04)",
+      P.arbitrate(sp2, cfg_sp)["winners"].iloc[0]["neutral"] == "C8H12O4")
+
+
 def test_all():
     assert FAIL == 0, f"{FAIL} checks failed"
 

@@ -111,6 +111,15 @@ class PassConfig:
     # same neutral independently assigned via a primary channel.
     minor_channels: tuple = ("[M+CO3]-", "[M+O2]-", "[M]-.")
     minor_channel_penalty: float = 0.12
+    # Reference-list selection prior: a candidate neutral on an ACTIVE reference
+    # peaklist (a published product of the sample's chemistry, or a known
+    # contaminant) is far more likely real than a mass-coincidence monster of
+    # similar score. Add a small TIE-BREAK bonus to its eff_score -- enough to win
+    # a near-tie (gap < the 0.05 tie window), never enough to override a clearly
+    # better isotope-scored fit. Empty set / 0.0 -> no-op. Set by assign.run from
+    # the run's context-active reference lists (reflists.active_lists).
+    reflist_formulas: frozenset = frozenset()
+    reflist_prior: float = 0.04
 
 
 # ---------------------------------------------------------------------------
@@ -335,6 +344,12 @@ def arbitrate(scored: pd.DataFrame, cfg: PassConfig) -> dict:
                          - base["adduct_label"].isin(cfg.minor_channels)
                          * cfg.minor_channel_penalty
                          - base["cal_penalty"])
+    # reference-list selection prior: a neutral on an active reference peaklist gets
+    # a small tie-break bonus so a known literature/contaminant formula wins a
+    # near-tie over a mass-coincidence monster (a soft prior, not an override).
+    if cfg.reflist_formulas and cfg.reflist_prior:
+        base["eff_score"] += (base["compound_formula"].isin(cfg.reflist_formulas)
+                              * cfg.reflist_prior)
 
     winners = []
     for pid, grp in base.groupby("sample_peak_id"):

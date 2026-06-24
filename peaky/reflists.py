@@ -149,6 +149,109 @@ def _target_table(lists, adducts, include_radicals: bool):
     return rows
 
 
+def rescue_unexplained_by_reflist(client, sample_id, ledger, profile, cfg, lists,
+                                  adducts, *, score_fn=None, tol_ppm: float = 4.0,
+                                  log=print) -> dict:
+    """RESCUE-VERIFY: match UNEXPLAINED peaks by mass to active reference-list
+    formulas, then SCORE those specific formulas with the server (match_compounds).
+
+    Decision per matched peak (mass gate: server ion_score >= tau_low AND on-cal z):
+      * isotope-CONFIRMED  -> commit literature-anchored M0 (Good/Identified-grade);
+      * too DIM to confirm (the predicted 13C M+1 falls below height_cutoff, so no
+        satellite COULD show) -> commit a low-quality Candidate + below_assignability
+        so the lead is never lost back to 'unexplained' (the user's small-peak rule);
+      * isotopes EXPECTED (bright enough) but absent, or off-cal / poor score
+        -> leave unexplained (a real mass coincidence, not corroborated).
+
+    A soft, provenance-tagged rescue: never overrides an existing assignment (only
+    ROLE_UNEXPLAINED peaks are touched), every commit records the source list."""
+    import pandas as pd
+
+    from . import io_mascope as IO
+    from . import ledger as L
+    score_fn = score_fn or IO.score_candidates
+    if not lists:
+        return {"rescued": 0, "tentative": 0}
+    un = ledger[ledger["role"] == L.ROLE_UNEXPLAINED].dropna(subset=["mz"])
+    if not len(un):
+        return {"rescued": 0, "tentative": 0}
+    mz_by_pid = {pid: float(m) for pid, m in zip(un["peak_id"], un["mz"])}
+    matches = match_by_mass(list(mz_by_pid.values()), lists, adducts, tol_ppm=tol_ppm)
+    by_mz = {round(m, 5): pid for pid, m in mz_by_pid.items()}
+    want, allf = {}, set()
+    for m in matches:
+        pid = by_mz.get(round(m["obs_mz"], 5))
+        if pid is not None and pid not in want:
+            want[pid] = (m["formula"], m["adduct"], m["list"])
+            allf.add(m["formula"])
+    if not allf:
+        return {"rescued": 0, "tentative": 0}
+    fr = score_fn(client, sample_id, sorted(allf), allow_partial=True,
+                  mechanism_ids=getattr(cfg, "mechanism_ids", None))
+    if fr is None or not len(fr):
+        return {"rescued": 0, "tentative": 0}
+    fr = fr[fr["sample_peak_id"].notna()]
+    mu = getattr(cfg, "cal_mu", None)
+    sigma = getattr(cfg, "cal_sigma", None) or 0.5
+    z_acc = getattr(cfg, "cal_z_accept", 2.0)
+    floor = getattr(cfg, "tau_low", 0.70)
+    hcut = getattr(cfg, "height_cutoff", 100.0)
+    rescued = tentative = 0
+    for pid, (formula, adduct, lid) in want.items():
+        idx = ledger.index[ledger["peak_id"] == pid]
+        if not len(idx) or ledger.at[idx[0], "role"] != L.ROLE_UNEXPLAINED:
+            continue
+        i = idx[0]
+        mz = float(ledger.at[i, "mz"])
+        h = float(ledger.at[i, "height"]) if pd.notna(ledger.at[i, "height"]) else 0.0
+        sub = fr[(fr["compound_formula"] == formula)
+                 & ((fr["sample_peak_mz"] - mz).abs() < 0.006)]
+        base = sub[sub["is_base"] & sub["ion_score"].notna()]
+        if base.empty:
+            continue
+        top = base.sort_values("ion_score", ascending=False).iloc[0]
+        score = float(top["ion_score"])
+        ppm = float(top["ppm_error"]) if pd.notna(top["ppm_error"]) else None
+        z = abs((ppm - mu) / sigma) if (mu is not None and ppm is not None) else 0.0
+        if score < floor or ppm is None or z > z_acc:
+            continue                                   # poor mass match / off-cal -> leave
+        # isotope confirmation: a confirmed satellite sits at the M+1/M+2 mass, not
+        # the base m/z -- scan the full scored frame for this formula, not `sub`.
+        iso_ok = bool(len(fr[(fr["compound_formula"] == formula) & (~fr["is_base"])
+                             & (pd.to_numeric(fr["iso_score"], errors="coerce").fillna(0) > 0.4)]))
+        nC = C.parse_formula(formula).get("C", 0)
+        iso_observable = 0.011 * nC * h >= hcut        # predicted 13C M+1 vs the floor
+        srcs = next((Ls.cite().split(",")[0] for Ls in lists if Ls.id == lid), lid)
+        # runs AFTER apply_tiers (like the F/carbon demotes), so set tier explicitly.
+        if iso_ok:
+            L.commit_assignment(ledger, pid, neutral_formula=formula, adduct=adduct,
+                                ion_formula=str(top["ion_formula"]), ion_score=score,
+                                compound_score=score, ppm_error=ppm, pass_no=8,
+                                method=f"reflist-rescue:{lid}", confidence="Good (literature)",
+                                commentary=(f"Reference-list match ({srcs}); server score "
+                                            f"{score:.2f}, isotope-confirmed, z={z:.1f}."))
+            ledger.at[i, "tier"] = "Identified"
+            rescued += 1
+        elif not iso_observable:                       # too dim to confirm -> tentative
+            L.commit_assignment(ledger, pid, neutral_formula=formula, adduct=adduct,
+                                ion_formula=str(top["ion_formula"]), ion_score=score,
+                                compound_score=score, ppm_error=ppm, pass_no=8,
+                                method=f"reflist-rescue:{lid}",
+                                confidence="Candidate (literature, dim)",
+                                commentary=(f"Reference-list match ({srcs}); server score "
+                                            f"{score:.2f}, z={z:.1f}. Too dim ({h:.0f} cps) to "
+                                            "confirm isotopes -- tentative lead, not confirmed."))
+            ledger.at[i, "tier"] = "Candidate"
+            if "below_assignability" not in ledger.columns:
+                ledger["below_assignability"] = False
+            ledger.at[i, "below_assignability"] = True
+            tentative += 1
+        # else: bright enough to show isotopes but none confirmed -> mass coincidence, leave
+    log(f"[reflist] rescue-verify: {rescued} confirmed + {tentative} tentative "
+        f"(of {len(want)} reference-matched unexplained)")
+    return {"rescued": rescued, "tentative": tentative}
+
+
 def match_by_mass(mz_values, lists, adducts, *, tol_ppm: float = 5.0,
                   include_radicals: bool = False) -> list:
     """Rescue/annotate UNEXPLAINED peaks (which have no formula) BY MASS: for each
