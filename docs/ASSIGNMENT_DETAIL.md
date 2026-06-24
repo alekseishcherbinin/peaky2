@@ -56,7 +56,7 @@ run(sample_id, context='ambient-air', cfg=None, use_cache=True,
     do_pass2/3/4/5=True, ts_peaks=None, adducts=None, log=print,
     checkpoint_dir=None) -> dict
 ```
-Chains: fetch peaks → `new_ledger` → isotope prescan → reagent labeling → pass 0 → pass 1 → calibrate → relabel → iso-envelope (pre-pass-4) → demote_carbon/massgate → pass 2 → pass 3 → pass 4 → pass 5 → reagent sweep → audits → iso-envelope (2nd) → composites → pass 6 (ladder) → iso-envelope (3rd) → cleanup → siloxane → degeneracy → tiers → fluorine demotion → carbon-cluster demotion → ionization-plausibility demotion → reference-list rescue-verify → optional time-series → `validate` + `stats`. Returns `{ledger, stats, summaries, prescan, problems, module_versions, module_hashes, context, sample_id}`.
+Chains: fetch peaks → `new_ledger` → isotope prescan → reagent labeling → pass 0 → pass 1 → calibrate → relabel → iso-envelope (pre-pass-4) → demote_carbon/massgate → pass 2 → pass 3 → pass 4 → pass 5 → reagent sweep → audits → iso-envelope (2nd) → composites → pass 6 (ladder) → iso-envelope (3rd) → cleanup → siloxane → degeneracy → tiers → fluorine demotion → carbon-cluster demotion → ionization-plausibility demotion → speculative-residual demotion → reference-list rescue-verify → optional time-series → `validate` + `stats`. Returns `{ledger, stats, summaries, prescan, problems, module_versions, module_hashes, context, sample_id}`.
 
 ---
 
@@ -335,7 +335,7 @@ A bromomethane reagent-precursor fragment (CH₂Br₂ → CHBr₂⁻, m/z 170.84
 
 ### 5.6 Fluorine demotion (cleanup.py:466–502)
 
-`demote_unconfirmed_fluorine(f_min=4)`: demotes M0s on unconfirmed high fluorine (`F ≥ 4`) from Identified → Candidate + sets `below_assignability` (19F is monoisotopic, no twin). Exempts known PFCAs (`CnH F(2n-1) O2`, n≥2) and any fit with Cl/Br/S anchors. **Must run after `apply_tiers`** so demotion sticks.
+`demote_unconfirmed_fluorine(f_min=4)`: demotes M0s on unconfirmed high fluorine (`F ≥ 4`) from Identified → Candidate + sets `below_assignability` (19F is monoisotopic, no twin). Exempts known PFCAs (`CnH F(2n-1) O2`, n≥2) and any fit with a Cl/Br/S anchor whose diagnostic isotope is **CONFIRMED** — `34S`/`37Cl`/`81Br` present in the row's `isotopologues` (not merely the element in the formula); a *reagent* Br adduct's `81Br` does **not** count (it confirms the adduct, not the neutral). On the merged ledger (no isotopologues) it falls back to element-presence. **Must run after `apply_tiers`** so demotion sticks. (Audit rule-gap 1 — caught the F7+S monster C₈H₁₃F₇N₂O₄S that was exempted only because S was in the formula.)
 
 ### 5.6b Carbon-cluster demotion (`demote_implausible_carbon`)
 
@@ -345,7 +345,11 @@ A bromomethane reagent-precursor fragment (CH₂Br₂ → CHBr₂⁻, m/z 170.84
 
 A neutral can only be detected on a channel its chemistry supports: `[M-H]-` needs an **acidic proton**, the anion-cluster adducts (`[M+Br]-`/`[M+CO3]-`/`[M+NO3]-`/`[M+HSO4]-`/`[M+CHO2]-`/…) need an **H-bond donor / polar site**. A **pure hydrocarbon** (no O/N/S/P/halogen/Si) has neither, so it cannot ionize on these channels — a high exact-mass + isotope score on a C/H ion just confirms the carbon count, not a real analyte. Such M0s (e.g. C₇H₁₀/C₇H₁₂ `[M-H]-`, C₂H₂ `[M+CO3]-`) → Identified → Candidate + `below_assignability`. **Electron attachment (`[M]-.`/`[M+O2]-`) is exempt** — the one route a heteroatom-free, electron-poor species has. Negative-mode anion channels only. **Runs after `apply_tiers`**, between the carbon-cluster demotion and rescue-verify.
 
-### 5.6d Reference-list rescue-verify (`reflists.rescue_unexplained_by_reflist`)
+### 5.6d Speculative-residual demotion (`demote_speculative_residual`)
+
+Targets **only** `method` starting `residual` (the pass-4 residual explainer / series gap-fill — the speculative tail; pass-0/1/2 grid analytes and known-species are untouched). Demotes Identified → Candidate + `below_assignability` when the commit reached the top tier on weak evidence (audit rule-gaps 2–4): **off-calibration** (`|z| > cal_z_accept`); **uncorroborated multi-N** (`n_iso==0` AND N≥3 — a Br doublet confirms the adduct Br, not the neutral's C/N backbone); a **series gap-fill with no anchors** ("0 supporting anchors" in the commentary); or a **sole minor-background channel** (`n_iso==0`, adduct in `minor_channels`, no primary-channel partner for the neutral). Caught C₆H₅N₃ and C₁₂H₆O. **Runs after `apply_tiers`**, just before rescue-verify; takes `cfg` for the calibration band + minor-channel set.
+
+### 5.6e Reference-list rescue-verify (`reflists.rescue_unexplained_by_reflist`)
 
 Runs **last** in `assign.run` (after the demotions, so it sets its own tier). Matches the still-`unexplained` residual **by mass** against the run's active reference peaklists, then SCORES those specific formulas with the server (`match_compounds`) — turning a literature lead into a verified ID or a refutation. Decision per matched peak (mass gate: server `ion_score ≥ tau_low` AND on-cal `z ≤ cal_z_accept`):
 - **isotope-confirmed** → commit literature-anchored M0, tier Identified, `confidence="Good (literature)"`;

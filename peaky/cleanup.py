@@ -21,6 +21,7 @@ which invent chemistry the spectrum doesn't support:
 from __future__ import annotations
 
 import bisect
+import json
 
 import pandas as pd
 
@@ -463,6 +464,30 @@ def reclaim_envelope_tails(ledger: pd.DataFrame, *, ppm: float = 6.0, log=print)
 F_DEMOTE_MIN = 4   # F count above which an unanchored, non-PFCA fit is an F-monster
 
 
+def _confirmed_iso_labels(s) -> set:
+    """Set of server-confirmed isotope labels from a row's isotopologues JSON
+    (composite labels split: '13C+81Br' -> {'13C','81Br'})."""
+    out: set = set()
+    if isinstance(s, str) and s.strip().startswith("["):
+        try:
+            for d in json.loads(s):
+                for p in str(d.get("label", "")).split("+"):
+                    if p:
+                        out.add(p)
+        except Exception:
+            pass
+    return out
+
+
+def _iso_count(s) -> int:
+    if isinstance(s, str) and s.strip().startswith("["):
+        try:
+            return len(json.loads(s))
+        except Exception:
+            return 0
+    return 0
+
+
 def _is_pfca(cnt: dict) -> bool:
     """Perfluorocarboxylic acid CnHF(2n-1)O2 (TFA, PFPrA, ... PFOA)."""
     nC = cnt.get("C", 0)
@@ -480,13 +505,27 @@ def demote_unconfirmed_fluorine(ledger: pd.DataFrame, *, f_min: int = F_DEMOTE_M
     below_assignability. Real PFCAs and isotope-anchored F species are kept."""
     n = 0
     has_ba = "below_assignability" in ledger.columns
+    has_iso = "isotopologues" in ledger.columns
     target = (ledger.index[ledger["role"] == L.ROLE_M0]
               if "role" in ledger.columns else ledger.index)   # merged ledger has no role col
     for i in target:
         cnt = C.parse_formula(str(ledger.at[i, "neutral_formula"] or ""))
         if cnt.get("F", 0) < f_min:
             continue
-        if _is_pfca(cnt) or cnt.get("Cl", 0) or cnt.get("Br", 0) or cnt.get("S", 0):
+        if _is_pfca(cnt):
+            continue
+        # a Cl/Br/S anchor exempts F only when its diagnostic isotope is CONFIRMED
+        # (34S/37Cl/81Br) -- NOT merely present in the formula. A reagent Br adduct's
+        # 81Br confirms the ADDUCT, not the neutral, so it does not count. On the
+        # merged ledger (no isotopologues column) fall back to formula-presence.
+        if has_iso:
+            labs = _confirmed_iso_labels(ledger.at[i, "isotopologues"])
+            ad = str(ledger.at[i, "adduct"]) if "adduct" in ledger.columns else ""
+            if ((cnt.get("S", 0) and "34S" in labs)
+                    or (cnt.get("Cl", 0) and "37Cl" in labs)
+                    or (cnt.get("Br", 0) and "81Br" in labs and "Br" not in ad)):
+                continue
+        elif cnt.get("Cl", 0) or cnt.get("Br", 0) or cnt.get("S", 0):
             continue
         if str(ledger.at[i, "tier"]) == "Identified":
             ledger.at[i, "tier"] = "Candidate"
@@ -494,7 +533,7 @@ def demote_unconfirmed_fluorine(ledger: pd.DataFrame, *, f_min: int = F_DEMOTE_M
             ledger.at[i, "below_assignability"] = True
         if "commentary" in ledger.columns:
             note = (f"unconfirmed fluorine (F{cnt.get('F', 0)}; ¹⁹F monoisotopic, no "
-                    "Cl/Br/S anchor, not a PFCA) -- likely mass coincidence")
+                    "CONFIRMED Cl/Br/S isotope anchor, not a PFCA) -- likely mass coincidence")
             prev = str(ledger.at[i, "commentary"] or "")
             ledger.at[i, "commentary"] = (prev + "; " + note) if prev and prev != "nan" else note
         n += 1
@@ -581,6 +620,64 @@ def demote_implausible_ionization(ledger: pd.DataFrame, *, log=print) -> dict:
         n += 1
     log(f"[cleanup] demoted {n} implausible-ionization M0 (heteroatom-free via anion channel)")
     return {"ionization_demoted": n}
+
+
+def demote_speculative_residual(ledger: pd.DataFrame, cfg=None, *, log=print) -> dict:
+    """Demote speculative residual-tail commits that reached Identified on weak
+    evidence (plausibility-audit rule-gaps). Targets ONLY method startswith
+    'residual' (the pass-4 residual explainer / series gap-fill) — so pass-0/1/2
+    grid analytes and known-species are untouched. Demote Identified->Candidate +
+    below_assignability when any of:
+      * off-calibration: |z| > cal_z_accept (committed beyond the calibrated window);
+      * uncorroborated multi-N: n_iso==0 AND N>=3 (a Br-doublet confirms the adduct
+        Br, not the neutral's C/N backbone);
+      * series gap-fill with no anchors ('0 supporting anchors' in the commentary);
+      * sole minor-background channel (n_iso==0, adduct in minor_channels, and the
+        neutral has no primary-channel partner)."""
+    if "method" not in ledger.columns or "tier" not in ledger.columns:
+        return {"residual_demoted": 0}
+    minor = set(getattr(cfg, "minor_channels", None) or ("[M+CO3]-", "[M+O2]-", "[M]-."))
+    mu = getattr(cfg, "cal_mu", None)
+    sigma = getattr(cfg, "cal_sigma", None) or 0.5
+    zacc = getattr(cfg, "cal_z_accept", 2.0)
+    has_ba = "below_assignability" in ledger.columns
+    is_m0 = ledger["role"] == L.ROLE_M0 if "role" in ledger.columns else pd.Series(True, index=ledger.index)
+    # neutrals with a primary-channel (non-minor) M0 assignment somewhere
+    primary = set()
+    if "adduct" in ledger.columns:
+        prim = ledger[is_m0 & ~ledger["adduct"].astype(str).isin(minor)]
+        primary = set(prim["neutral_formula"].astype(str))
+    n = 0
+    for i in ledger.index[is_m0 & (ledger["tier"] == "Identified")]:
+        if not str(ledger.at[i, "method"] or "").startswith("residual"):
+            continue
+        cnt = C.parse_formula(str(ledger.at[i, "neutral_formula"] or ""))
+        ni = _iso_count(ledger.at[i, "isotopologues"]) if "isotopologues" in ledger.columns else 0
+        ad = str(ledger.at[i, "adduct"]) if "adduct" in ledger.columns else ""
+        ppm = ledger.at[i, "ppm_error"]
+        z = abs((float(ppm) - mu) / sigma) if (mu is not None and pd.notna(ppm)) else 0.0
+        comm = str(ledger.at[i, "commentary"] or "")
+        reason = None
+        if mu is not None and z > zacc:
+            reason = f"off-calibration (z={z:.1f} > {zacc})"
+        elif ni == 0 and cnt.get("N", 0) >= 3:
+            reason = f"N{cnt.get('N', 0)} with no isotope corroboration"
+        elif "0 supporting anchors" in comm:
+            reason = "series gap-fill with no supporting anchors"
+        elif ni == 0 and ad in minor and str(ledger.at[i, "neutral_formula"]) not in primary:
+            reason = f"sole minor channel ({ad}), no isotope or primary-channel support"
+        if reason is None:
+            continue
+        ledger.at[i, "tier"] = "Candidate"
+        if has_ba:
+            ledger.at[i, "below_assignability"] = True
+        if "commentary" in ledger.columns:
+            note = f"speculative residual fit -- {reason}; not Identified-grade"
+            prev = comm
+            ledger.at[i, "commentary"] = (prev + "; " + note) if prev and prev != "nan" else note
+        n += 1
+    log(f"[cleanup] demoted {n} speculative-residual M0 (weak Identified residual fits)")
+    return {"residual_demoted": n}
 
 
 # ---- reagent-precursor / brominated-background halocarbons -----------------

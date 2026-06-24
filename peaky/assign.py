@@ -303,6 +303,9 @@ def run(sample_id: str, context: str = "ambient-air", *,
     # ionization-plausibility: a pure hydrocarbon can't deprotonate or anchor an
     # anion cluster -> demote heteroatom-free M0 on [M-H]-/[M+Br]-/[M+CO3]-/... .
     cleanup.demote_implausible_ionization(led, log=log)
+    # speculative residual-tail: residual:* commits that reached Identified on weak
+    # evidence (off-cal z, no-iso multi-N, 0-anchor series, sole minor channel).
+    cleanup.demote_speculative_residual(led, cfg, log=log)
     # RESCUE-VERIFY (last, post-tiering so it sets its own tier): match the still-
     # unexplained residual by mass to active reference peaklists and SCORE those
     # formulas with the server -- isotope-confirmed -> literature-anchored M0;

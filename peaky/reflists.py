@@ -35,9 +35,14 @@ _DIR = os.path.join(os.path.dirname(__file__), "data", "peaklists")
 # batch-name / label keywords -> experimental-context tag (the metadata "unlock").
 # Conservative: only fire on clearly source-diagnostic words.
 CONTEXT_KEYWORDS = {
-    "monoterpene_ox": ("monoterpene", "pinene", "limonene", "terpene", "orange", "carene"),
+    "monoterpene_ox": ("monoterpene", "pinene", "a-pinene", "α-pinene", "apinene",
+                       "b-pinene", "β-pinene", "limonene", "terpene", "orange",
+                       "carene", "sabinene", "myrcene"),
     "limonene_ox": ("limonene", "orange", "d-limonene"),
-    "ap_ox": ("pinene", "a-pinene", "apinene"),
+    "ap_ox": ("pinene", "a-pinene", "α-pinene", "apinene"),
+    # NB a bare "AP" abbreviation (e.g. "AP Low temperature") is intentionally NOT a
+    # keyword (too many false positives like "soap"/"grape"); tag such runs via the
+    # explicit context/--reagent-config path instead.
 }
 
 
