@@ -761,9 +761,6 @@ def reference_lists(ctx, pdf):
     except Exception:
         pass
 
-    fig = plt.figure(figsize=A4)
-    fig.text(0.08, 0.95, "Reference-list corroboration & rescue", fontsize=15,
-             weight="bold", color=INK)
     lines = [("dim", "Known-molecule peaklists unlocked by this run's context "
                      f"({', '.join(rl['tags']) or 'none'}):")]
     for c in rl["cites"]:
@@ -774,10 +771,10 @@ def reference_lists(ctx, pdf):
               ("gap", 0.25),
               ("dim", "a Candidate-tier neutral whose formula is a published product of this system"),
               ("m", "   neutral            seen-in (conditions)")]
-    for f, h in sorted(corr.items())[:14]:
+    for f, h in sorted(corr.items())[:12]:
         lines.append(("m", f"   {f:18s} {', '.join(h[0]['conditions'])}"))
-    if len(corr) > 14:
-        lines.append(("dim", f"   … +{len(corr) - 14} more (tables/reflist_matches_{ctx['tag']}.csv)"))
+    if len(corr) > 12:
+        lines.append(("dim", f"   … +{len(corr) - 12} more (tables/reflist_matches_{ctx['tag']}.csv)"))
 
     nbest = sum(1 for m in rescue if abs(m["ppm"]) <= 1.0)
     lines += [("gap", 0.7),
@@ -786,18 +783,26 @@ def reference_lists(ctx, pdf):
               ("dim", f"matched BY MASS under the reagent adducts ({nbest} within 1 ppm) — LEADS to verify,"),
               ("dim", "not assignments; isotope/co-variation confirmation still required."),
               ("m", "    obs m/z     formula      adduct        ppm   identity")]
-    for m in sorted(rescue, key=lambda x: abs(x["ppm"]))[:16]:
+    for m in sorted(rescue, key=lambda x: abs(x["ppm"]))[:18]:
         nm = f"  {m['name']}" if m.get("name") else ""
         lines.append(("m", f"   {m['obs_mz']:9.4f}   {m['formula']:>10}   {m['adduct']:<12} "
                            f"{m['ppm']:+.2f}{nm}"))
-    if len(rescue) > 16:
-        lines.append(("dim", f"   … +{len(rescue) - 16} more (tables/reflist_matches_{ctx['tag']}.csv)"))
+    if len(rescue) > 18:
+        lines.append(("dim", f"   … +{len(rescue) - 18} more (tables/reflist_matches_{ctx['tag']}.csv)"))
     lines += [("gap", 0.6),
               ("dim", "Soft prior: formula membership is literature evidence, not a measurement. The"),
               ("dim", "near-0-ppm matches far exceed chance (a list this size yields ~single-digit random"),
               ("dim", "hits at this tolerance); larger-ppm matches are weaker and flagged by their ppm.")]
-    _text_lines(fig, lines, y0=0.90, dy=0.022, size=8.5)
-    _close(pdf, fig)
+    # paginate so the (variable-length) corroboration + rescue tables never clip
+    PER = 40
+    pages = [lines[i:i + PER] for i in range(0, len(lines), PER)] or [[]]
+    for pi, chunk in enumerate(pages):
+        fig = plt.figure(figsize=A4)
+        ttl = "Reference-list corroboration & rescue" + (
+            "" if len(pages) == 1 else f"  (page {pi + 1}/{len(pages)})")
+        fig.text(0.08, 0.95, ttl, fontsize=15, weight="bold", color=INK)
+        _text_lines(fig, chunk, y0=0.90, dy=0.0195, size=8.5)
+        _close(pdf, fig)
 
 
 def gka(ctx, pdf):
