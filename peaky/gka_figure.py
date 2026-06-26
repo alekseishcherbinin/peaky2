@@ -251,9 +251,14 @@ def _panel(ax, mass: np.ndarray, fmass: dict, base: str, color: str, label: str,
     alls = detect_series(fmass, units=[base], min_len=min_len)
     npk = len({m for s in alls for m in s.members})
     longest = max((s.length for s in alls), default=0)
+    n_drawn = min(len(alls), top_chains)   # only the top `top_chains` get connectors
     _zoom_to(ax, drawn_x, drawn_y)
     if alls:
-        ax.text(0.015, 0.965, f"{len(alls)} series · {npk} peaks · longest {longest}",
+        # be honest that only the top `top_chains` series are drawn (the subtitle
+        # used to report the full detected count while the panel showed ~10 ladders)
+        shown = (f"{len(alls)} series" if len(alls) <= top_chains
+                 else f"top {n_drawn} of {len(alls)} series shown")
+        ax.text(0.015, 0.965, f"{shown} · {npk} peaks · longest {longest}",
                 transform=ax.transAxes, fontsize=7, va="top", color="#444")
     ax.tick_params(labelsize=7.5)
     ax.grid(alpha=0.22)
